@@ -1,0 +1,9 @@
+{
+  "name": "gmail-chat-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Zalo-inspired chat demo that uses Gmail-style account signup for prototyping.",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
