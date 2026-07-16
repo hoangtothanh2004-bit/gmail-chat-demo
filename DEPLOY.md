@@ -40,6 +40,16 @@ Sau khi deploy, Render se cap URL dang:
 
 Moi nguoi chi can mo URL nay, dang ky Gmail, tim Gmail cua nhau, ket ban va chat.
 
+## Video call
+
+Video call dung WebRTC 1-1:
+
+- Render lam kenh signaling qua HTTPS/SSE.
+- Trinh duyet se hoi quyen camera va micro khi bam `Video`.
+- Goi duoc tot nhat tren URL HTTPS public nhu `https://...onrender.com`.
+- Neu thu bang IP LAN `http://192.168...`, nhieu trinh duyet co the chan camera vi khong phai HTTPS.
+- Ban demo dang dung STUN mien phi. Mot so mang cong ty/4G NAT chat co the can TURN server rieng de ket noi on dinh 100%.
+
 ## Luu y ve du lieu
 
 Ban hien tai luu users/messages vao file `chat-db.json`.

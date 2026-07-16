@@ -412,6 +412,35 @@ async function handleApi(req, res, url) {
       return sendJson(res, 201, { message: { ...message, sender: publicUser(session.user) } });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/calls/signal") {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const body = await readJson(req);
+      const conversationId = String(body.conversationId || "");
+      const type = String(body.type || "");
+      const callId = String(body.callId || "");
+      const conversation = db.conversations.find((item) => item.id === conversationId);
+
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      }
+
+      const allowedTypes = new Set(["offer", "answer", "candidate", "hangup", "reject", "busy"]);
+      if (!allowedTypes.has(type) || !callId) {
+        return sendJson(res, 400, { error: "Tin hieu cuoc goi khong hop le." });
+      }
+
+      const recipients = conversation.participantIds.filter((userId) => userId !== session.user.id);
+      pushEvent(recipients, "call-signal", {
+        conversationId,
+        callId,
+        type,
+        payload: body.payload || {},
+        from: publicUser(session.user)
+      });
+      return sendJson(res, 200, { ok: true });
+    }
+
     if (req.method === "GET" && url.pathname === "/api/events") {
       const session = requireAuth(req, res);
       if (!session) return;

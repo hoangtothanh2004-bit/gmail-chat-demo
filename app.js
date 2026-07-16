@@ -11,6 +11,12 @@ let activeTab = "messages";
 let searchText = "";
 let searchResults = [];
 let events = null;
+let callState = null;
+let incomingCall = null;
+
+const rtcConfig = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+};
 
 function $(selector) {
   return document.querySelector(selector);
@@ -127,6 +133,15 @@ function connectEvents() {
     }
     await loadMessages(activeConversationId);
     renderApp();
+  });
+  events.addEventListener("call-signal", (event) => {
+    try {
+      handleCallSignal(JSON.parse(event.data)).catch(() => {
+        showToast("Tin hieu cuoc goi bi loi.");
+      });
+    } catch {
+      showToast("Khong doc duoc tin hieu cuoc goi.");
+    }
   });
 }
 
@@ -287,9 +302,11 @@ function renderApp() {
         ${active ? renderDetails(active) : renderAccountDetails()}
       </aside>
     </main>
+    ${renderCallLayer()}
   `;
 
   bindAppEvents();
+  attachCallStreams();
   scrollMessagesToBottom();
 }
 
@@ -383,6 +400,7 @@ function renderChat(active) {
         </div>
       </div>
       <div class="header-actions">
+        <button title="Goi video" id="videoCallBtn">Video</button>
         <button title="Lam moi" id="headerRefreshBtn">R</button>
       </div>
     </header>
@@ -397,6 +415,60 @@ function renderChat(active) {
       <textarea id="messageInput" rows="1" placeholder="Nhap tin nhan..."></textarea>
       <button class="send-btn" title="Gui" type="submit">Send</button>
     </form>
+  `;
+}
+
+function renderCallLayer() {
+  if (incomingCall) {
+    return `
+      <div class="call-layer">
+        <section class="call-panel compact">
+          <div class="call-avatar">${escapeHtml(incomingCall.from.avatar)}</div>
+          <h2>Cuoc goi video den</h2>
+          <p>${escapeHtml(incomingCall.from.name)} dang goi cho ban.</p>
+          <div class="call-actions">
+            <button class="call-btn danger" id="rejectCallBtn">Tu choi</button>
+            <button class="call-btn accept" id="acceptCallBtn">Nhan</button>
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
+  if (!callState) {
+    return "";
+  }
+
+  return `
+    <div class="call-layer">
+      <section class="call-panel">
+        <header class="call-topbar">
+          <div>
+            <strong>${escapeHtml(callState.peer?.name || "Cuoc goi video")}</strong>
+            <span>${escapeHtml(callState.status || "Dang ket noi...")}</span>
+          </div>
+          <button class="call-icon-btn" id="minimizeCallBtn" title="Thu nho">-</button>
+        </header>
+        <div class="video-grid">
+          <div class="video-frame remote">
+            <video id="remoteVideo" autoplay playsinline></video>
+            <div class="video-placeholder ${callState.remoteStream ? "hidden" : ""}">
+              <div class="call-avatar">${escapeHtml(callState.peer?.avatar || "?")}</div>
+              <p>Dang cho video cua doi phuong...</p>
+            </div>
+          </div>
+          <div class="video-frame local">
+            <video id="localVideo" autoplay playsinline muted></video>
+            <span>Ban</span>
+          </div>
+        </div>
+        <div class="call-actions">
+          <button class="call-btn" id="toggleMicBtn">${callState.micEnabled ? "Tat mic" : "Bat mic"}</button>
+          <button class="call-btn" id="toggleCameraBtn">${callState.cameraEnabled ? "Tat camera" : "Bat camera"}</button>
+          <button class="call-btn danger" id="endCallBtn">Ket thuc</button>
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -499,6 +571,13 @@ function bindAppEvents() {
   $("#searchBtn")?.addEventListener("click", searchUsers);
   $("#refreshBtn")?.addEventListener("click", manualRefresh);
   $("#headerRefreshBtn")?.addEventListener("click", manualRefresh);
+  $("#videoCallBtn")?.addEventListener("click", startVideoCall);
+  $("#acceptCallBtn")?.addEventListener("click", acceptIncomingCall);
+  $("#rejectCallBtn")?.addEventListener("click", rejectIncomingCall);
+  $("#endCallBtn")?.addEventListener("click", () => endCall(true));
+  $("#toggleMicBtn")?.addEventListener("click", toggleMic);
+  $("#toggleCameraBtn")?.addEventListener("click", toggleCamera);
+  $("#minimizeCallBtn")?.addEventListener("click", () => showToast("Cuoc goi dang hien tren man hinh."));
   $("#logoutBtn")?.addEventListener("click", logout);
   $("#messageForm")?.addEventListener("submit", sendMessage);
   $("#emojiBtn")?.addEventListener("click", () => {
@@ -586,7 +665,286 @@ async function manualRefresh() {
   }
 }
 
+function getActiveConversation() {
+  return conversations.find((item) => item.id === activeConversationId) || null;
+}
+
+function makeCallId() {
+  return `call_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+async function sendCallSignal(conversationId, type, payload = {}, callId = callState?.callId || incomingCall?.callId) {
+  if (!conversationId || !callId) return;
+  await api("/api/calls/signal", {
+    method: "POST",
+    body: { conversationId, callId, type, payload }
+  });
+}
+
+function createPeerConnection(conversationId, callId) {
+  const peerConnection = new RTCPeerConnection(rtcConfig);
+
+  peerConnection.onicecandidate = (event) => {
+    if (!event.candidate) return;
+    sendCallSignal(conversationId, "candidate", { candidate: event.candidate }, callId).catch(() => {
+      showToast("Khong gui duoc tin hieu ket noi video.");
+    });
+  };
+
+  peerConnection.ontrack = (event) => {
+    if (!callState || callState.callId !== callId) return;
+    callState.remoteStream = event.streams[0] || callState.remoteStream || new MediaStream();
+    if (!event.streams[0] && event.track) {
+      callState.remoteStream.addTrack(event.track);
+    }
+    callState.status = "Dang trong cuoc goi";
+    renderApp();
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    if (!callState || callState.callId !== callId) return;
+    if (peerConnection.connectionState === "connected") {
+      callState.status = "Dang trong cuoc goi";
+      renderApp();
+    }
+    if (["failed", "disconnected"].includes(peerConnection.connectionState)) {
+      callState.status = "Ket noi video dang yeu";
+      renderApp();
+    }
+  };
+
+  return peerConnection;
+}
+
+async function startVideoCall() {
+  const active = getActiveConversation();
+  if (!active) {
+    showToast("Hay chon mot nguoi ban de goi video.");
+    return;
+  }
+
+  if (callState || incomingCall) {
+    showToast("Dang co mot cuoc goi khac.");
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
+    showToast("Trinh duyet nay chua ho tro video call.");
+    return;
+  }
+
+  const callId = makeCallId();
+  let localStream;
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    const peerConnection = createPeerConnection(active.id, callId);
+    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+
+    callState = {
+      callId,
+      conversationId: active.id,
+      peer: active.peer,
+      peerConnection,
+      localStream,
+      remoteStream: null,
+      pendingCandidates: [],
+      status: "Dang goi...",
+      micEnabled: true,
+      cameraEnabled: true
+    };
+    renderApp();
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    await sendCallSignal(active.id, "offer", { description: peerConnection.localDescription }, callId);
+  } catch (err) {
+    localStream?.getTracks().forEach((track) => track.stop());
+    cleanupCall();
+    showToast(err.name === "NotAllowedError" ? "Ban can cho phep camera va micro." : "Khong bat dau duoc cuoc goi video.");
+  }
+}
+
+async function handleCallSignal(signal) {
+  if (!signal?.type || !signal.callId) return;
+
+  if (signal.type === "offer") {
+    if (callState || incomingCall) {
+      await sendCallSignal(signal.conversationId, "busy", {}, signal.callId).catch(() => {});
+      return;
+    }
+
+    incomingCall = {
+      callId: signal.callId,
+      conversationId: signal.conversationId,
+      from: signal.from,
+      offer: signal.payload.description,
+      pendingCandidates: []
+    };
+    renderApp();
+    return;
+  }
+
+  if (incomingCall && incomingCall.callId === signal.callId && signal.type === "candidate") {
+    incomingCall.pendingCandidates.push(signal.payload.candidate);
+    return;
+  }
+
+  if (!callState || callState.callId !== signal.callId) return;
+
+  if (signal.type === "answer") {
+    await callState.peerConnection.setRemoteDescription(new RTCSessionDescription(signal.payload.description));
+    await flushPendingCandidates();
+    callState.status = "Dang trong cuoc goi";
+    renderApp();
+    return;
+  }
+
+  if (signal.type === "candidate") {
+    const candidate = signal.payload.candidate;
+    if (!candidate) return;
+    if (callState.peerConnection.remoteDescription?.type) {
+      await callState.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } else {
+      callState.pendingCandidates.push(candidate);
+    }
+    return;
+  }
+
+  if (signal.type === "reject") {
+    showToast("Doi phuong da tu choi cuoc goi.");
+    cleanupCall();
+    renderApp();
+    return;
+  }
+
+  if (signal.type === "busy") {
+    showToast("Doi phuong dang ban.");
+    cleanupCall();
+    renderApp();
+    return;
+  }
+
+  if (signal.type === "hangup") {
+    showToast("Cuoc goi da ket thuc.");
+    cleanupCall();
+    renderApp();
+  }
+}
+
+async function acceptIncomingCall() {
+  const pending = incomingCall;
+  if (!pending) return;
+  incomingCall = null;
+
+  let localStream;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    const peerConnection = createPeerConnection(pending.conversationId, pending.callId);
+    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+
+    callState = {
+      callId: pending.callId,
+      conversationId: pending.conversationId,
+      peer: pending.from,
+      peerConnection,
+      localStream,
+      remoteStream: null,
+      pendingCandidates: pending.pendingCandidates || [],
+      status: "Dang ket noi...",
+      micEnabled: true,
+      cameraEnabled: true
+    };
+    renderApp();
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(pending.offer));
+    await flushPendingCandidates();
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    await sendCallSignal(pending.conversationId, "answer", { description: peerConnection.localDescription }, pending.callId);
+  } catch (err) {
+    localStream?.getTracks().forEach((track) => track.stop());
+    await sendCallSignal(pending.conversationId, "reject", {}, pending.callId).catch(() => {});
+    cleanupCall();
+    renderApp();
+    showToast(err.name === "NotAllowedError" ? "Ban can cho phep camera va micro." : "Khong nhan duoc cuoc goi.");
+  }
+}
+
+async function rejectIncomingCall() {
+  const pending = incomingCall;
+  incomingCall = null;
+  if (pending) {
+    await sendCallSignal(pending.conversationId, "reject", {}, pending.callId).catch(() => {});
+  }
+  renderApp();
+}
+
+async function flushPendingCandidates() {
+  if (!callState?.pendingCandidates?.length) return;
+  const candidates = [...callState.pendingCandidates];
+  callState.pendingCandidates = [];
+  for (const candidate of candidates) {
+    if (candidate) {
+      await callState.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  }
+}
+
+function toggleMic() {
+  if (!callState?.localStream) return;
+  callState.micEnabled = !callState.micEnabled;
+  callState.localStream.getAudioTracks().forEach((track) => {
+    track.enabled = callState.micEnabled;
+  });
+  renderApp();
+}
+
+function toggleCamera() {
+  if (!callState?.localStream) return;
+  callState.cameraEnabled = !callState.cameraEnabled;
+  callState.localStream.getVideoTracks().forEach((track) => {
+    track.enabled = callState.cameraEnabled;
+  });
+  renderApp();
+}
+
+async function endCall(shouldSignal) {
+  const previous = callState;
+  if (shouldSignal && previous) {
+    await sendCallSignal(previous.conversationId, "hangup", {}, previous.callId).catch(() => {});
+  }
+  cleanupCall();
+  renderApp();
+}
+
+function cleanupCall() {
+  const previous = callState;
+  callState = null;
+  if (!previous) return;
+  previous.localStream?.getTracks().forEach((track) => track.stop());
+  previous.remoteStream?.getTracks().forEach((track) => track.stop());
+  previous.peerConnection?.close();
+}
+
+function attachCallStreams() {
+  if (!callState) return;
+  const localVideo = $("#localVideo");
+  const remoteVideo = $("#remoteVideo");
+  if (localVideo && callState.localStream && localVideo.srcObject !== callState.localStream) {
+    localVideo.srcObject = callState.localStream;
+  }
+  if (remoteVideo && callState.remoteStream && remoteVideo.srcObject !== callState.remoteStream) {
+    remoteVideo.srcObject = callState.remoteStream;
+  }
+}
+
 function logout() {
+  if (callState) {
+    sendCallSignal(callState.conversationId, "hangup", {}, callState.callId).catch(() => {});
+    cleanupCall();
+  }
+  incomingCall = null;
   if (events) events.close();
   events = null;
   token = "";
