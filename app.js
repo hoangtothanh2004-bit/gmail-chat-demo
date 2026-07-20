@@ -10,6 +10,8 @@ let messages = [];
 let conversationTasks = [];
 let activeConversationId = "";
 let authMode = "login";
+let resetCodeRequested = false;
+let resetEmail = "";
 let activeTab = "messages";
 let searchText = "";
 let searchResults = [];
@@ -304,6 +306,7 @@ function renderAuth() {
         <div class="auth-tabs">
           <button type="button" class="${authMode === "login" ? "active" : ""}" data-auth-tab="login">Đăng nhập</button>
           <button type="button" class="${authMode === "register" ? "active" : ""}" data-auth-tab="register">Đăng ký</button>
+          <button type="button" class="${authMode === "forgot" ? "active" : ""}" data-auth-tab="forgot">Quên mật khẩu</button>
         </div>
 
         <form id="authForm">
@@ -313,17 +316,24 @@ function renderAuth() {
           </div>
           <div class="field">
             <label for="email">Gmail</label>
-            <input id="email" name="email" type="email" autocomplete="email" placeholder="ban@gmail.com" required>
+            <input id="email" name="email" type="email" autocomplete="email" placeholder="ban@gmail.com" value="${escapeAttr(authMode === "forgot" ? resetEmail : "")}" required>
           </div>
-          <div class="field">
+          <div class="field ${authMode === "forgot" && resetCodeRequested ? "" : "hidden"}">
+            <label for="resetCode">Mã xác nhận 6 số</label>
+            <input id="resetCode" name="resetCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+          </div>
+          <div class="field ${authMode === "forgot" && !resetCodeRequested ? "hidden" : ""}">
             <label for="password">Mật khẩu</label>
-            <input id="password" name="password" type="password" autocomplete="${authMode === "login" ? "current-password" : "new-password"}" placeholder="Tối thiểu 6 ký tự" required>
+            <input id="password" name="password" type="password" autocomplete="${authMode === "login" ? "current-password" : "new-password"}" placeholder="Tối thiểu 6 ký tự" ${authMode === "forgot" && !resetCodeRequested ? "" : "required"}>
           </div>
-          <button class="primary-btn" type="submit">${authMode === "login" ? "Đăng nhập" : "Tạo tài khoản"}</button>
+          <button class="primary-btn" type="submit">${authMode === "login" ? "Đăng nhập" : authMode === "register" ? "Tạo tài khoản" : resetCodeRequested ? "Đổi mật khẩu" : "Gửi mã xác nhận"}</button>
           <p class="error" id="authError"></p>
         </form>
 
-        <p class="hint">
+        <p class="hint ${authMode === "forgot" ? "" : "hidden"}">
+          Mã gồm 6 chữ số không lặp lại và có hiệu lực trong 10 phút.
+        </p>
+        <p class="hint ${authMode === "forgot" ? "hidden" : ""}">
           Tài khoản thử: <strong>demo1@gmail.com</strong>, <strong>demo2@gmail.com</strong>,
           <strong>demo3@gmail.com</strong> / <strong>123456</strong>.
         </p>
@@ -360,6 +370,7 @@ function renderAuth() {
   document.querySelectorAll("[data-auth-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       authMode = button.dataset.authTab;
+      if (authMode !== "forgot") resetCodeRequested = false;
       renderAuth();
     });
   });
@@ -372,10 +383,12 @@ async function handleAuth(event) {
   const name = String(form.get("name") || "").trim();
   const email = String(form.get("email") || "").trim().toLowerCase();
   const password = String(form.get("password") || "");
+  const resetCode = String(form.get("resetCode") || "").trim();
   const error = $("#authError");
   error.textContent = "";
 
   if (!isGmail(email)) return (error.textContent = "Vui lòng dùng địa chỉ @gmail.com.");
+  if (authMode === "forgot") return handlePasswordReset(email, resetCode, password, error);
   if (password.length < 6) return (error.textContent = "Mật khẩu cần tối thiểu 6 ký tự.");
   if (authMode === "register" && !name) return (error.textContent = "Vui lòng nhập tên hiển thị.");
 
@@ -394,6 +407,50 @@ async function handleAuth(event) {
   }
 }
 
+async function handlePasswordReset(email, resetCode, password, error) {
+  try {
+    if (!resetCodeRequested) {
+      const data = await api("/api/password-reset/request", {
+        method: "POST",
+        body: { email }
+      });
+      resetEmail = email;
+      resetCodeRequested = true;
+      renderAuth();
+      const message = data.emailConfigured
+        ? "Mã xác nhận đã được gửi về Gmail của bạn."
+        : "Server chưa cấu hình gửi email. Hãy thêm SMTP trong Render để gửi mã thật.";
+      showToast(data.debugCode ? `${message} Mã demo: ${data.debugCode}` : message);
+      return;
+    }
+
+    if (!/^\d{6}$/.test(resetCode)) {
+      error.textContent = "Vui lòng nhập mã xác nhận gồm 6 chữ số.";
+      return;
+    }
+    if (new Set(resetCode).size !== 6) {
+      error.textContent = "Mã xác nhận không được lặp chữ số.";
+      return;
+    }
+    if (password.length < 6) {
+      error.textContent = "Mật khẩu cần tối thiểu 6 ký tự.";
+      return;
+    }
+
+    await api("/api/password-reset/confirm", {
+      method: "POST",
+      body: { email, code: resetCode, password }
+    });
+    authMode = "login";
+    resetCodeRequested = false;
+    resetEmail = "";
+    renderAuth();
+    showToast("Đã đổi mật khẩu. Bạn có thể đăng nhập bằng mật khẩu mới.");
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
 function renderApp() {
   applyTheme();
   const active = getActiveConversation();
@@ -402,12 +459,11 @@ function renderApp() {
       <nav class="rail" aria-label="Điều hướng">
         ${renderAvatar(currentUser)}
         <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn">Tin nhắn</button>
-        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Bạn bè">Bạn bè</button>
+        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Danh bạ">Danh bạ</button>
         <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm">Nhóm</button>
         <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc">Công việc</button>
         <div class="rail-spacer"></div>
-        <button class="icon-btn" id="settingsBtn" title="Cài đặt">Cài đặt</button>
-        <button class="icon-btn" id="logoutBtn" title="Đăng xuất">Đăng xuất</button>
+        <button class="icon-btn" id="settingsBtn" title="Cá nhân">Cá nhân</button>
       </nav>
 
       <aside class="sidebar">
@@ -427,7 +483,7 @@ function renderApp() {
           ${renderTab("search", "Tìm bạn")}
           ${renderTab("friends", `Bạn bè ${friends.length}`)}
           ${renderTab("groups", "Nhóm")}
-          ${renderTab("tasks", "Việc")}
+          ${renderTab("tasks", "Công việc")}
           ${renderTab("requests", `Lời mời ${requests.length ? `(${requests.length})` : ""}`)}
         </div>
 
@@ -612,7 +668,6 @@ function renderChat(active) {
         <button class="mobile-only" title="Mở danh sách" id="mobileListBtn">Danh sách</button>
         <button title="${active.type === "group" ? "Gọi nhóm" : "Gọi video"}" id="videoCallBtn">${active.type === "group" ? "Gọi nhóm" : "Gọi video"}</button>
         <button title="Giao việc" id="newTaskBtn">Giao việc</button>
-        <button title="Làm mới" id="headerRefreshBtn">Làm mới</button>
       </div>
     </header>
 
@@ -854,6 +909,7 @@ function renderSettingsModal() {
           <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
         </div>
         <button class="primary-btn" type="submit">Lưu cài đặt</button>
+        <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
       </form>
     </div>
   `;
@@ -1022,8 +1078,6 @@ function bindAppEvents() {
     modal = "settings";
     renderApp();
   });
-  $("#refreshBtn")?.addEventListener("click", manualRefresh);
-  $("#headerRefreshBtn")?.addEventListener("click", manualRefresh);
   $("#mobileListBtn")?.addEventListener("click", () => {
     mobileListOpen = true;
     renderApp();
@@ -1042,6 +1096,7 @@ function bindAppEvents() {
   $("#taskForm")?.addEventListener("submit", createTask);
   $("#settingsForm")?.addEventListener("submit", saveSettings);
   $("#installAppBtn")?.addEventListener("click", installApp);
+  $("#settingsLogoutBtn")?.addEventListener("click", logout);
   $("#emojiBtn")?.addEventListener("click", () => {
     const input = $("#messageInput");
     input.value = `${input.value} :)`.trimStart();

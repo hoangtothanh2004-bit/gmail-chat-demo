@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "A Zalo-inspired chat demo that uses Gmail-style account signup for prototyping.",
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  },
   "scripts": {
     "start": "node server.js"
   }

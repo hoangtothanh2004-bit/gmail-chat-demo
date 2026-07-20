@@ -2,6 +2,13 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+let nodemailer = null;
+
+try {
+  nodemailer = require("nodemailer");
+} catch {
+  nodemailer = null;
+}
 
 const root = __dirname;
 const port = Number(process.env.PORT || 4173);
@@ -41,7 +48,8 @@ function normalizeDb(data) {
     friendRequests: Array.isArray(data.friendRequests) ? data.friendRequests : [],
     conversations: Array.isArray(data.conversations) ? data.conversations : [],
     messages: Array.isArray(data.messages) ? data.messages : [],
-    tasks: Array.isArray(data.tasks) ? data.tasks : []
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    passwordResets: Array.isArray(data.passwordResets) ? data.passwordResets : []
   };
 
   next.users.forEach((user) => {
@@ -73,6 +81,8 @@ function normalizeDb(data) {
     task.status ||= "open";
     task.createdAt ||= new Date().toISOString();
   });
+
+  next.passwordResets = next.passwordResets.filter((reset) => new Date(reset.expiresAt) > new Date());
 
   ensureDemoUser(next, "Demo One", "demo1@gmail.com");
   ensureDemoUser(next, "Demo Two", "demo2@gmail.com");
@@ -132,7 +142,8 @@ function createDb() {
     friendRequests: [],
     conversations: [],
     messages: [],
-    tasks: []
+    tasks: [],
+    passwordResets: []
   });
 }
 
@@ -156,6 +167,67 @@ function verifyPassword(password, stored) {
   const candidate = crypto.scryptSync(password, salt, 64);
   const expected = Buffer.from(hash, "hex");
   return expected.length === candidate.length && crypto.timingSafeEqual(candidate, expected);
+}
+
+function createResetCode() {
+  const digits = "0123456789".split("");
+  for (let index = digits.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.randomInt(index + 1);
+    [digits[index], digits[swapIndex]] = [digits[swapIndex], digits[index]];
+  }
+  return digits.slice(0, 6).join("");
+}
+
+function cleanupPasswordResets() {
+  const now = new Date();
+  db.passwordResets = (db.passwordResets || []).filter((reset) => new Date(reset.expiresAt) > now);
+}
+
+function isMailConfigured() {
+  return Boolean(nodemailer && process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+function createMailTransport() {
+  const port = Number(process.env.SMTP_PORT || 465);
+  const secure = String(process.env.SMTP_SECURE || (port === 465 ? "true" : "false")).toLowerCase() !== "false";
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
+}
+
+async function sendResetCodeEmail(user, code) {
+  if (!isMailConfigured()) return { sent: false, reason: "missing-smtp" };
+
+  const appUrl = process.env.APP_URL || "https://gmail-chat-demo.onrender.com";
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
+  await createMailTransport().sendMail({
+    from,
+    to: user.email,
+    subject: "Mã xác nhận đặt lại mật khẩu Gmail Chat",
+    text: `Mã xác nhận của bạn là ${code}. Mã có hiệu lực trong 10 phút và các chữ số không lặp lại.\n\nMở ứng dụng: ${appUrl}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.55;color:#102033">
+        <h2>Đặt lại mật khẩu Gmail Chat</h2>
+        <p>Mã xác nhận của bạn là:</p>
+        <p style="font-size:28px;font-weight:800;letter-spacing:6px">${code}</p>
+        <p>Mã có hiệu lực trong 10 phút và các chữ số không lặp lại.</p>
+        <p><a href="${appUrl}">Mở ứng dụng Gmail Chat</a></p>
+      </div>
+    `
+  });
+  return { sent: true };
+}
+
+function invalidateUserSessions(userId) {
+  for (const [token, sessionUserId] of sessions.entries()) {
+    if (sessionUserId === userId) sessions.delete(token);
+  }
 }
 
 function createUser(name, email, password) {
@@ -492,6 +564,89 @@ async function handleApi(req, res, url) {
       const token = createId("session");
       sessions.set(token, user.id);
       return sendJson(res, 200, { token, user: privateUser(user) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/password-reset/request") {
+      const body = await readJson(req);
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!isGmail(email)) return sendJson(res, 400, { error: "Vui lòng dùng địa chỉ @gmail.com." });
+
+      cleanupPasswordResets();
+      const user = findUserByEmail(email);
+      const emailConfigured = isMailConfigured();
+      if (!user) {
+        return sendJson(res, 200, {
+          ok: true,
+          emailConfigured,
+          message: "Nếu Gmail này đã đăng ký, mã xác nhận sẽ được gửi trong ít phút."
+        });
+      }
+
+      const code = createResetCode();
+      db.passwordResets = (db.passwordResets || []).filter((reset) => reset.userId !== user.id);
+      db.passwordResets.push({
+        id: createId("reset"),
+        userId: user.id,
+        email: user.email,
+        codeHash: hashPassword(code),
+        attempts: 0,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+      });
+      saveDb();
+
+      let mailResult = { sent: false, reason: "missing-smtp" };
+      try {
+        mailResult = await sendResetCodeEmail(user, code);
+      } catch (error) {
+        console.error("Failed to send reset code email:", error.message);
+      }
+      if (!mailResult.sent) {
+        console.log(`Password reset code for ${user.email}: ${code}`);
+      }
+
+      return sendJson(res, 200, {
+        ok: true,
+        emailConfigured: mailResult.sent,
+        debugCode: !mailResult.sent && process.env.ALLOW_DEMO_RESET_CODE === "true" ? code : undefined,
+        message: mailResult.sent
+          ? "Mã xác nhận đã được gửi về Gmail của bạn."
+          : "Server chưa cấu hình SMTP nên chưa gửi được email thật."
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/password-reset/confirm") {
+      const body = await readJson(req);
+      const email = String(body.email || "").trim().toLowerCase();
+      const code = String(body.code || "").trim();
+      const password = String(body.password || "");
+
+      if (!isGmail(email)) return sendJson(res, 400, { error: "Vui lòng dùng địa chỉ @gmail.com." });
+      if (!/^\d{6}$/.test(code)) return sendJson(res, 400, { error: "Mã xác nhận phải gồm 6 chữ số." });
+      if (new Set(code).size !== 6) return sendJson(res, 400, { error: "Mã xác nhận không được lặp chữ số." });
+      if (password.length < 6) return sendJson(res, 400, { error: "Mật khẩu cần tối thiểu 6 ký tự." });
+
+      cleanupPasswordResets();
+      const user = findUserByEmail(email);
+      const reset = user ? (db.passwordResets || []).find((candidate) => candidate.userId === user.id && candidate.email === email) : null;
+      if (!user || !reset) return sendJson(res, 400, { error: "Mã xác nhận không đúng hoặc đã hết hạn." });
+      if (reset.attempts >= 5) {
+        db.passwordResets = db.passwordResets.filter((candidate) => candidate.id !== reset.id);
+        saveDb();
+        return sendJson(res, 429, { error: "Bạn đã nhập sai quá nhiều lần. Vui lòng gửi mã mới." });
+      }
+
+      if (!verifyPassword(code, reset.codeHash)) {
+        reset.attempts += 1;
+        saveDb();
+        return sendJson(res, 400, { error: "Mã xác nhận không đúng." });
+      }
+
+      user.passwordHash = hashPassword(password);
+      db.passwordResets = db.passwordResets.filter((candidate) => candidate.id !== reset.id);
+      invalidateUserSessions(user.id);
+      saveDb();
+      return sendJson(res, 200, { ok: true });
     }
 
     if (req.method === "GET" && url.pathname === "/api/me") {
