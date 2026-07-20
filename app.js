@@ -18,10 +18,15 @@ let callState = null;
 let incomingCall = null;
 let modal = null;
 let profileModal = null;
+let audioContext = null;
+let ringtoneTimer = null;
+let lastMessageSoundAt = 0;
 
 const rtcConfig = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 };
+
+const messageSoundReasons = new Set(["message", "task-created", "friend-request", "friend-accepted", "group-created"]);
 
 function $(selector) {
   return document.querySelector(selector);
@@ -96,6 +101,72 @@ function showToast(message) {
   window.setTimeout(() => toast.remove(), 2800);
 }
 
+function getAudioContext() {
+  const Context = window.AudioContext || window.webkitAudioContext;
+  if (!Context) return null;
+  if (!audioContext) audioContext = new Context();
+  return audioContext;
+}
+
+function unlockAudio() {
+  const context = getAudioContext();
+  if (!context || context.state !== "suspended") return;
+  context.resume().catch(() => {});
+}
+
+function playTone(frequency, duration, delay = 0, volume = 0.045, type = "sine") {
+  const context = getAudioContext();
+  if (!context || context.state !== "running") return;
+
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  const start = context.currentTime + delay;
+  const end = start + duration;
+
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(end + 0.02);
+}
+
+function playMessageSound() {
+  const now = Date.now();
+  if (now - lastMessageSoundAt < 700) return;
+  lastMessageSoundAt = now;
+  unlockAudio();
+  playTone(740, 0.11, 0, 0.045, "sine");
+  playTone(980, 0.13, 0.14, 0.04, "sine");
+}
+
+function playRingtoneTick() {
+  unlockAudio();
+  playTone(880, 0.18, 0, 0.06, "triangle");
+  playTone(660, 0.22, 0.24, 0.05, "triangle");
+}
+
+function startRingtone() {
+  stopRingtone();
+  playRingtoneTick();
+  ringtoneTimer = window.setInterval(playRingtoneTick, 1450);
+}
+
+function stopRingtone() {
+  if (!ringtoneTimer) return;
+  window.clearInterval(ringtoneTimer);
+  ringtoneTimer = null;
+}
+
+function shouldPlayRefreshSound(payload) {
+  if (!payload?.actorId || payload.actorId === currentUser?.id) return false;
+  return messageSoundReasons.has(payload.reason);
+}
+
 function applyTheme() {
   const theme = currentUser?.theme || localStorage.getItem("gmail-chat-theme") || "light";
   const resolved = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
@@ -150,12 +221,20 @@ async function loadMessages(conversationId) {
 function connectEvents() {
   if (events) events.close();
   events = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
-  events.addEventListener("refresh", async () => {
+  events.addEventListener("refresh", async (event) => {
+    let payload = {};
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      payload = {};
+    }
+    const playSound = shouldPlayRefreshSound(payload);
     const previous = activeConversationId;
     await refreshData({ keepMessages: true });
     if (previous && conversations.some((item) => item.id === previous)) activeConversationId = previous;
     await loadMessages(activeConversationId);
     renderApp();
+    if (playSound) playMessageSound();
   });
   events.addEventListener("call-signal", (event) => {
     try {
@@ -279,13 +358,13 @@ function renderApp() {
     <main class="app-shell">
       <nav class="rail" aria-label="Điều hướng">
         ${renderAvatar(currentUser)}
-        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn">C</button>
-        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Bạn bè">F</button>
-        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm">G</button>
-        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc">T</button>
+        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn">Tin nhắn</button>
+        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Bạn bè">Bạn bè</button>
+        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm">Nhóm</button>
+        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc">Công việc</button>
         <div class="rail-spacer"></div>
-        <button class="icon-btn" id="settingsBtn" title="Cài đặt">S</button>
-        <button class="icon-btn" id="logoutBtn" title="Đăng xuất">X</button>
+        <button class="icon-btn" id="settingsBtn" title="Cài đặt">Cài đặt</button>
+        <button class="icon-btn" id="logoutBtn" title="Đăng xuất">Đăng xuất</button>
       </nav>
 
       <aside class="sidebar">
@@ -462,7 +541,7 @@ function renderRequestsList() {
             <strong>${escapeHtml(request.from.name)}</strong>
             <p>${escapeHtml(request.from.email)}</p>
           </div>
-          <button class="mini-action" data-accept="${escapeAttr(request.id)}">Nhan</button>
+          <button class="mini-action" data-accept="${escapeAttr(request.id)}">Nhận</button>
         </div>
       `
     )
@@ -487,9 +566,9 @@ function renderChat(active) {
         </div>
       </div>
       <div class="header-actions">
-        <button title="${active.type === "group" ? "Gọi nhóm" : "Gọi video"}" id="videoCallBtn">${active.type === "group" ? "Gọi nhóm" : "Video"}</button>
-        <button title="Giao việc" id="newTaskBtn">Việc</button>
-        <button title="Làm mới" id="headerRefreshBtn">R</button>
+        <button title="${active.type === "group" ? "Gọi nhóm" : "Gọi video"}" id="videoCallBtn">${active.type === "group" ? "Gọi nhóm" : "Gọi video"}</button>
+        <button title="Giao việc" id="newTaskBtn">Giao việc</button>
+        <button title="Làm mới" id="headerRefreshBtn">Làm mới</button>
       </div>
     </header>
 
@@ -777,8 +856,8 @@ function renderCallLayer() {
           <h2>${incomingCall.isGroup ? "Cuộc gọi nhóm đến" : "Cuộc gọi video đến"}</h2>
           <p>${escapeHtml(incomingCall.from.name)} đang gọi ${incomingCall.isGroup ? `trong ${incomingCall.conversationName}` : "cho bạn"}.</p>
           <div class="call-actions">
-            <button class="call-btn danger" id="rejectCallBtn">Tu choi</button>
-            <button class="call-btn accept" id="acceptCallBtn">Nhan</button>
+            <button class="call-btn danger" id="rejectCallBtn">Từ chối</button>
+            <button class="call-btn accept" id="acceptCallBtn">Nhận</button>
           </div>
         </section>
       </div>
@@ -795,7 +874,7 @@ function renderCallLayer() {
             <strong>${escapeHtml(callState.title || "Cuộc gọi video")}</strong>
             <span>${escapeHtml(callState.status || "Đang kết nối...")}</span>
           </div>
-          <button class="call-icon-btn" id="minimizeCallBtn" title="Thu nho">-</button>
+          <button class="call-icon-btn" id="minimizeCallBtn" title="Thu nhỏ">-</button>
         </header>
         <div class="video-grid ${peers.length > 1 ? "multi" : ""}">
           <div class="remote-video-grid">
@@ -1255,12 +1334,13 @@ async function handleCallSignal(signal) {
       incomingCall = {
         callId: signal.callId,
         conversationId: signal.conversationId,
-        conversationName: conversation?.peer?.name || "cuoc tro chuyen",
+        conversationName: conversation?.peer?.name || "cuộc trò chuyện",
         isGroup: conversation?.type === "group",
         from: signal.from,
         offers: {},
         pendingCandidates: {}
       };
+      startRingtone();
     }
     incomingCall.offers[signal.from.id] = signal.payload.description;
     incomingCall.from = incomingCall.from || signal.from;
@@ -1272,6 +1352,12 @@ async function handleCallSignal(signal) {
     const senderId = signal.from?.id || "";
     if (!incomingCall.pendingCandidates[senderId]) incomingCall.pendingCandidates[senderId] = [];
     incomingCall.pendingCandidates[senderId].push(signal.payload.candidate);
+    return;
+  }
+  if (incomingCall && incomingCall.callId === signal.callId && ["hangup", "reject", "busy"].includes(signal.type)) {
+    stopRingtone();
+    incomingCall = null;
+    renderApp();
     return;
   }
   if (!callState || callState.callId !== signal.callId) return;
@@ -1298,7 +1384,7 @@ async function handleCallSignal(signal) {
   }
   if (signal.type === "reject") {
     removeCallPeer(signal.from?.id);
-    showToast(`${signal.from?.name || "Mot thành viên"} đã từ chối cuộc gọi.`);
+    showToast(`${signal.from?.name || "Một thành viên"} đã từ chối cuộc gọi.`);
     if (!getCallPeers().length) cleanupCall();
     renderApp();
     return;
@@ -1312,7 +1398,7 @@ async function handleCallSignal(signal) {
   }
   if (signal.type === "hangup") {
     removeCallPeer(signal.from?.id);
-    showToast(`${signal.from?.name || "Mot thành viên"} đã rời cuộc gọi.`);
+    showToast(`${signal.from?.name || "Một thành viên"} đã rời cuộc gọi.`);
     if (!getCallPeers().length || callState.conversationType !== "group") cleanupCall();
     renderApp();
   }
@@ -1338,6 +1424,7 @@ async function answerOfferSignal(signal) {
 async function acceptIncomingCall() {
   const pending = incomingCall;
   if (!pending) return;
+  stopRingtone();
   incomingCall = null;
   const active = conversations.find((item) => item.id === pending.conversationId);
 
@@ -1393,6 +1480,7 @@ async function acceptIncomingCall() {
 
 async function rejectIncomingCall() {
   const pending = incomingCall;
+  stopRingtone();
   incomingCall = null;
   if (pending) {
     const targets = Object.keys(pending.offers || {});
@@ -1454,6 +1542,7 @@ function removeCallPeer(userId) {
 }
 
 function cleanupCall() {
+  stopRingtone();
   const previous = callState;
   callState = null;
   if (!previous) return;
@@ -1477,6 +1566,7 @@ function attachCallStreams() {
 }
 
 function logout() {
+  stopRingtone();
   if (callState) {
     sendCallSignal(callState.conversationId, "hangup", {}, callState.callId).catch(() => {});
     cleanupCall();
@@ -1502,5 +1592,9 @@ function scrollMessagesToBottom() {
   const element = $("#messages");
   if (element) element.scrollTop = element.scrollHeight;
 }
+
+["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+  window.addEventListener(eventName, unlockAudio, { passive: true });
+});
 
 boot();

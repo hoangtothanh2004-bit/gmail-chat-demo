@@ -405,7 +405,7 @@ function publicTask(task) {
   const creator = db.users.find((user) => user.id === task.createdBy);
   return {
     ...task,
-    conversationName: conversation?.type === "group" ? conversation.name : "Tin nhắn rieng",
+    conversationName: conversation?.type === "group" ? conversation.name : "Tin nhắn riêng",
     assignee: publicUser(assignee),
     creator: publicUser(creator)
   };
@@ -433,8 +433,8 @@ function pushEvent(userIds, eventName, payload = {}) {
   });
 }
 
-function pushConversationRefresh(conversation, reason) {
-  pushEvent(conversation.participantIds, "refresh", { reason, conversationId: conversation.id });
+function pushConversationRefresh(conversation, reason, actorId = "") {
+  pushEvent(conversation.participantIds, "refresh", { reason, conversationId: conversation.id, actorId });
 }
 
 function canSeeProfile(viewerId, targetId) {
@@ -451,7 +451,7 @@ function canSeeProfile(viewerId, targetId) {
 function validateAvatarUrl(value) {
   const avatarUrl = String(value || "").trim();
   if (!avatarUrl) return "";
-  if (avatarUrl.length > 800) throw new Error("Link anh dai dien qua dai.");
+  if (avatarUrl.length > 800) throw new Error("Link ảnh đại diện quá dài.");
   if (!/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("data:image/")) {
     throw new Error("Ảnh đại diện cần là URL http/https hoặc data image.");
   }
@@ -510,7 +510,7 @@ async function handleApi(req, res, url) {
       if (!session) return;
       const body = await readJson(req);
       const name = String(body.name ?? session.user.name).trim();
-      if (!name) return sendJson(res, 400, { error: "Tên hiển thị khong duoc rong." });
+      if (!name) return sendJson(res, 400, { error: "Tên hiển thị không được rỗng." });
 
       let avatarUrl = session.user.avatarUrl || "";
       try {
@@ -529,7 +529,7 @@ async function handleApi(req, res, url) {
       const relatedUserIds = db.conversations
         .filter((conversation) => conversation.participantIds.includes(session.user.id))
         .flatMap((conversation) => conversation.participantIds);
-      pushEvent(relatedUserIds, "refresh", { reason: "profile-updated" });
+      pushEvent(relatedUserIds, "refresh", { reason: "profile-updated", actorId: session.user.id });
       return sendJson(res, 200, { user: privateUser(session.user) });
     }
 
@@ -550,7 +550,7 @@ async function handleApi(req, res, url) {
       db.messages = db.messages.filter((message) => message.conversationId !== direct.id);
       db.tasks = db.tasks.filter((task) => task.conversationId !== direct.id);
       saveDb();
-      pushEvent(direct.participantIds, "refresh", { reason: "unfriended" });
+      pushEvent(direct.participantIds, "refresh", { reason: "unfriended", actorId: session.user.id });
       return sendJson(res, 200, { ok: true });
     }
 
@@ -624,7 +624,7 @@ async function handleApi(req, res, url) {
       };
       db.friendRequests.push(request);
       saveDb();
-      pushEvent([target.id], "refresh", { reason: "friend-request" });
+      pushEvent([target.id], "refresh", { reason: "friend-request", actorId: session.user.id });
       return sendJson(res, 201, { request });
     }
 
@@ -652,7 +652,7 @@ async function handleApi(req, res, url) {
       if (!name) return sendJson(res, 400, { error: "Vui lòng đặt tên nhóm." });
       if (participantIds.length < 3) return sendJson(res, 400, { error: "Nhóm cần ít nhất 3 người." });
       if (participantIds.some((id) => !db.users.some((user) => user.id === id))) {
-        return sendJson(res, 400, { error: "Thành viên khong hop le." });
+        return sendJson(res, 400, { error: "Thành viên không hợp lệ." });
       }
       for (let i = 0; i < participantIds.length; i += 1) {
         for (let j = i + 1; j < participantIds.length; j += 1) {
@@ -689,7 +689,7 @@ async function handleApi(req, res, url) {
         createdAt: new Date().toISOString()
       });
       saveDb();
-      pushConversationRefresh(conversation, "group-created");
+      pushConversationRefresh(conversation, "group-created", session.user.id);
       return sendJson(res, 201, { conversation: publicConversation(conversation, session.user.id) });
     }
 
@@ -715,7 +715,7 @@ async function handleApi(req, res, url) {
       const body = await readJson(req);
       const text = String(body.text || "").trim();
       if (!text) return sendJson(res, 400, { error: "Tin nhắn dang rong." });
-      if (text.length > 2000) return sendJson(res, 400, { error: "Tin nhắn qua dai." });
+      if (text.length > 2000) return sendJson(res, 400, { error: "Tin nhắn quá dài." });
 
       const message = {
         id: createId("msg"),
@@ -727,7 +727,7 @@ async function handleApi(req, res, url) {
       };
       db.messages.push(message);
       saveDb();
-      pushConversationRefresh(conversation, "message");
+      pushConversationRefresh(conversation, "message", session.user.id);
       return sendJson(res, 201, { message: { ...message, sender: publicUser(session.user) } });
     }
 
@@ -747,7 +747,7 @@ async function handleApi(req, res, url) {
 
       conversation.pinnedMessageId = message.id;
       saveDb();
-      pushConversationRefresh(conversation, "message-pinned");
+      pushConversationRefresh(conversation, "message-pinned", session.user.id);
       return sendJson(res, 200, { conversation: publicConversation(conversation, session.user.id) });
     }
 
@@ -761,7 +761,7 @@ async function handleApi(req, res, url) {
       }
       conversation.pinnedMessageId = "";
       saveDb();
-      pushConversationRefresh(conversation, "message-unpinned");
+      pushConversationRefresh(conversation, "message-unpinned", session.user.id);
       return sendJson(res, 200, { ok: true });
     }
 
@@ -812,7 +812,7 @@ async function handleApi(req, res, url) {
         createdAt: new Date().toISOString()
       });
       saveDb();
-      pushConversationRefresh(conversation, "task-created");
+      pushConversationRefresh(conversation, "task-created", session.user.id);
       return sendJson(res, 201, { task: publicTask(task) });
     }
 
@@ -837,7 +837,7 @@ async function handleApi(req, res, url) {
         task.assigneeId = body.assigneeId;
       }
       saveDb();
-      pushConversationRefresh(conversation, "task-updated");
+      pushConversationRefresh(conversation, "task-updated", session.user.id);
       return sendJson(res, 200, { task: publicTask(task) });
     }
 
@@ -936,7 +936,7 @@ function acceptRequest(currentUser, request, res) {
   }
 
   saveDb();
-  pushConversationRefresh(conversation, "friend-accepted");
+  pushConversationRefresh(conversation, "friend-accepted", currentUser.id);
   return sendJson(res, 200, { conversation: publicConversation(conversation, currentUser.id) });
 }
 
