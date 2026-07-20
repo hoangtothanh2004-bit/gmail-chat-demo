@@ -58,7 +58,7 @@ function normalizeDb(data) {
     conversation.createdBy ||= conversation.participantIds[0] || "";
     conversation.pinnedMessageId ||= "";
     if (conversation.type === "group") {
-      conversation.name ||= "Nhom chat";
+      conversation.name ||= "Nhóm chat";
       conversation.avatarUrl ||= "";
     }
   });
@@ -117,7 +117,7 @@ function ensureDemoFriendTriangle(targetDb) {
         id: createId("msg"),
         conversationId,
         senderId: userA.id,
-        text: "Chao ban, day la phong chat realtime demo.",
+        text: "Chào bạn, đây là phòng chat realtime demo.",
         type: "text",
         createdAt: now
       });
@@ -226,7 +226,7 @@ function publicConversation(conversation, userId) {
       peer: {
         id: conversation.id,
         name: conversation.name,
-        email: `${members.length} thanh vien`,
+        email: `${members.length} thành viên`,
         avatar: initials(conversation.name),
         avatarUrl: conversation.avatarUrl || ""
       },
@@ -309,7 +309,7 @@ function readJson(req) {
 function requireAuth(req, res) {
   const session = findSession(req);
   if (!session) {
-    sendJson(res, 401, { error: "Can dang nhap." });
+    sendJson(res, 401, { error: "Cần đăng nhập." });
     return null;
   }
   return session;
@@ -405,7 +405,7 @@ function publicTask(task) {
   const creator = db.users.find((user) => user.id === task.createdBy);
   return {
     ...task,
-    conversationName: conversation?.type === "group" ? conversation.name : "Tin nhan rieng",
+    conversationName: conversation?.type === "group" ? conversation.name : "Tin nhắn rieng",
     assignee: publicUser(assignee),
     creator: publicUser(creator)
   };
@@ -453,7 +453,7 @@ function validateAvatarUrl(value) {
   if (!avatarUrl) return "";
   if (avatarUrl.length > 800) throw new Error("Link anh dai dien qua dai.");
   if (!/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("data:image/")) {
-    throw new Error("Anh dai dien can la URL http/https hoac data image.");
+    throw new Error("Ảnh đại diện cần là URL http/https hoặc data image.");
   }
   return avatarUrl;
 }
@@ -466,10 +466,10 @@ async function handleApi(req, res, url) {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
 
-      if (!name) return sendJson(res, 400, { error: "Vui long nhap ten hien thi." });
-      if (!isGmail(email)) return sendJson(res, 400, { error: "Chi chap nhan dia chi @gmail.com." });
-      if (password.length < 6) return sendJson(res, 400, { error: "Mat khau can toi thieu 6 ky tu." });
-      if (findUserByEmail(email)) return sendJson(res, 409, { error: "Gmail nay da duoc dang ky." });
+      if (!name) return sendJson(res, 400, { error: "Vui lòng nhập tên hiển thị." });
+      if (!isGmail(email)) return sendJson(res, 400, { error: "Chỉ chấp nhận địa chỉ @gmail.com." });
+      if (password.length < 6) return sendJson(res, 400, { error: "Mật khẩu cần tối thiểu 6 ký tự." });
+      if (findUserByEmail(email)) return sendJson(res, 409, { error: "Gmail này đã được đăng ký." });
 
       const user = createUser(name, email, password);
       db.users.push(user);
@@ -485,7 +485,7 @@ async function handleApi(req, res, url) {
       const password = String(body.password || "");
       const user = findUserByEmail(email);
       if (!user || !verifyPassword(password, user.passwordHash)) {
-        return sendJson(res, 401, { error: "Sai Gmail hoac mat khau." });
+        return sendJson(res, 401, { error: "Sai Gmail hoặc mật khẩu." });
       }
 
       const token = createId("session");
@@ -510,7 +510,7 @@ async function handleApi(req, res, url) {
       if (!session) return;
       const body = await readJson(req);
       const name = String(body.name ?? session.user.name).trim();
-      if (!name) return sendJson(res, 400, { error: "Ten hien thi khong duoc rong." });
+      if (!name) return sendJson(res, 400, { error: "Tên hiển thị khong duoc rong." });
 
       let avatarUrl = session.user.avatarUrl || "";
       try {
@@ -544,7 +544,7 @@ async function handleApi(req, res, url) {
       if (!session) return;
       const targetId = decodeURIComponent(url.pathname.split("/")[3] || "");
       const direct = findDirectConversation(session.user.id, targetId);
-      if (!direct) return sendJson(res, 404, { error: "Hai tai khoan chua ket ban." });
+      if (!direct) return sendJson(res, 404, { error: "Hai tài khoản chưa kết bạn." });
 
       db.conversations = db.conversations.filter((conversation) => conversation.id !== direct.id);
       db.messages = db.messages.filter((message) => message.conversationId !== direct.id);
@@ -560,7 +560,7 @@ async function handleApi(req, res, url) {
       const userId = decodeURIComponent(url.pathname.split("/")[3] || "");
       const user = db.users.find((candidate) => candidate.id === userId);
       if (!user || !canSeeProfile(session.user.id, user.id)) {
-        return sendJson(res, 404, { error: "Khong xem duoc ho so nay." });
+        return sendJson(res, 404, { error: "Không xem được hồ sơ này." });
       }
       return sendJson(res, 200, {
         profile: {
@@ -601,9 +601,9 @@ async function handleApi(req, res, url) {
       const email = String(body.email || "").trim().toLowerCase();
       const target = findUserByEmail(email);
 
-      if (!target) return sendJson(res, 404, { error: "Khong tim thay tai khoan Gmail nay." });
-      if (target.id === session.user.id) return sendJson(res, 400, { error: "Khong the ket ban voi chinh minh." });
-      if (areFriends(session.user.id, target.id)) return sendJson(res, 409, { error: "Hai tai khoan da la ban be." });
+      if (!target) return sendJson(res, 404, { error: "Không tìm thấy tài khoản Gmail này." });
+      if (target.id === session.user.id) return sendJson(res, 400, { error: "Không thể kết bạn với chính mình." });
+      if (areFriends(session.user.id, target.id)) return sendJson(res, 409, { error: "Hai tài khoản đã là bạn bè." });
 
       const incoming = db.friendRequests.find(
         (request) => request.fromUserId === target.id && request.toUserId === session.user.id && request.status === "pending"
@@ -613,7 +613,7 @@ async function handleApi(req, res, url) {
       const existing = db.friendRequests.find(
         (request) => request.fromUserId === session.user.id && request.toUserId === target.id && request.status === "pending"
       );
-      if (existing) return sendJson(res, 409, { error: "Loi moi ket ban da duoc gui truoc do." });
+      if (existing) return sendJson(res, 409, { error: "Lời mời kết bạn đã được gửi trước đó." });
 
       const request = {
         id: createId("req"),
@@ -635,7 +635,7 @@ async function handleApi(req, res, url) {
       const request = db.friendRequests.find(
         (candidate) => candidate.id === requestId && candidate.toUserId === session.user.id && candidate.status === "pending"
       );
-      if (!request) return sendJson(res, 404, { error: "Khong tim thay loi moi ket ban." });
+      if (!request) return sendJson(res, 404, { error: "Không tìm thấy lời mời kết bạn." });
       return acceptRequest(session.user, request, res);
     }
 
@@ -649,15 +649,15 @@ async function handleApi(req, res, url) {
       );
       const participantIds = [session.user.id, ...memberIds];
 
-      if (!name) return sendJson(res, 400, { error: "Vui long dat ten nhom." });
-      if (participantIds.length < 3) return sendJson(res, 400, { error: "Nhom can it nhat 3 nguoi." });
+      if (!name) return sendJson(res, 400, { error: "Vui lòng đặt tên nhóm." });
+      if (participantIds.length < 3) return sendJson(res, 400, { error: "Nhóm cần ít nhất 3 người." });
       if (participantIds.some((id) => !db.users.some((user) => user.id === id))) {
-        return sendJson(res, 400, { error: "Thanh vien khong hop le." });
+        return sendJson(res, 400, { error: "Thành viên khong hop le." });
       }
       for (let i = 0; i < participantIds.length; i += 1) {
         for (let j = i + 1; j < participantIds.length; j += 1) {
           if (!areFriends(participantIds[i], participantIds[j])) {
-            return sendJson(res, 400, { error: "Tat ca thanh vien can ket ban voi nhau truoc khi tao nhom." });
+            return sendJson(res, 400, { error: "Tất cả thành viên cần kết bạn với nhau trước khi tạo nhóm." });
           }
         }
       }
@@ -684,7 +684,7 @@ async function handleApi(req, res, url) {
         id: createId("msg"),
         conversationId: conversation.id,
         senderId: session.user.id,
-        text: `Da tao nhom ${name}.`,
+        text: `Đã tạo nhóm ${name}.`,
         type: "system",
         createdAt: new Date().toISOString()
       });
@@ -698,7 +698,7 @@ async function handleApi(req, res, url) {
       if (!session) return;
       const conversationId = url.pathname.split("/")[3];
       const messages = getMessagesFor(session.user.id, conversationId);
-      if (!messages) return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      if (!messages) return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       const tasks = getTasksForConversation(session.user.id, conversationId) || [];
       return sendJson(res, 200, { messages, tasks });
     }
@@ -709,13 +709,13 @@ async function handleApi(req, res, url) {
       const conversationId = url.pathname.split("/")[3];
       const conversation = db.conversations.find((item) => item.id === conversationId);
       if (!conversation || !conversation.participantIds.includes(session.user.id)) {
-        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       }
 
       const body = await readJson(req);
       const text = String(body.text || "").trim();
-      if (!text) return sendJson(res, 400, { error: "Tin nhan dang rong." });
-      if (text.length > 2000) return sendJson(res, 400, { error: "Tin nhan qua dai." });
+      if (!text) return sendJson(res, 400, { error: "Tin nhắn dang rong." });
+      if (text.length > 2000) return sendJson(res, 400, { error: "Tin nhắn qua dai." });
 
       const message = {
         id: createId("msg"),
@@ -737,13 +737,13 @@ async function handleApi(req, res, url) {
       const conversationId = url.pathname.split("/")[3];
       const conversation = db.conversations.find((item) => item.id === conversationId);
       if (!conversation || !conversation.participantIds.includes(session.user.id)) {
-        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       }
 
       const body = await readJson(req);
       const messageId = String(body.messageId || "");
       const message = db.messages.find((item) => item.id === messageId && item.conversationId === conversation.id);
-      if (!message) return sendJson(res, 404, { error: "Khong tim thay tin nhan de ghim." });
+      if (!message) return sendJson(res, 404, { error: "Không tìm thấy tin nhắn để ghim." });
 
       conversation.pinnedMessageId = message.id;
       saveDb();
@@ -757,7 +757,7 @@ async function handleApi(req, res, url) {
       const conversationId = url.pathname.split("/")[3];
       const conversation = db.conversations.find((item) => item.id === conversationId);
       if (!conversation || !conversation.participantIds.includes(session.user.id)) {
-        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       }
       conversation.pinnedMessageId = "";
       saveDb();
@@ -770,7 +770,7 @@ async function handleApi(req, res, url) {
       if (!session) return;
       const conversationId = url.pathname.split("/")[3];
       const tasks = getTasksForConversation(session.user.id, conversationId);
-      if (!tasks) return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      if (!tasks) return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       return sendJson(res, 200, { tasks });
     }
 
@@ -780,16 +780,16 @@ async function handleApi(req, res, url) {
       const conversationId = url.pathname.split("/")[3];
       const conversation = db.conversations.find((item) => item.id === conversationId);
       if (!conversation || !conversation.participantIds.includes(session.user.id)) {
-        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       }
 
       const body = await readJson(req);
       const title = String(body.title || "").trim().slice(0, 140);
       const description = String(body.description || "").trim().slice(0, 500);
       const assigneeId = String(body.assigneeId || "");
-      if (!title) return sendJson(res, 400, { error: "Vui long nhap ten viec." });
+      if (!title) return sendJson(res, 400, { error: "Vui lòng nhập tên việc." });
       if (!conversation.participantIds.includes(assigneeId)) {
-        return sendJson(res, 400, { error: "Nguoi duoc giao viec phai nam trong cuoc tro chuyen." });
+        return sendJson(res, 400, { error: "Người được giao việc phải nằm trong cuộc trò chuyện." });
       }
 
       const task = {
@@ -807,7 +807,7 @@ async function handleApi(req, res, url) {
         id: createId("msg"),
         conversationId,
         senderId: session.user.id,
-        text: `Da giao viec: ${title}`,
+        text: `Đã giao việc: ${title}`,
         type: "task",
         createdAt: new Date().toISOString()
       });
@@ -823,7 +823,7 @@ async function handleApi(req, res, url) {
       const task = db.tasks.find((candidate) => candidate.id === taskId);
       const conversation = task ? db.conversations.find((item) => item.id === task.conversationId) : null;
       if (!task || !conversation || !conversation.participantIds.includes(session.user.id)) {
-        return sendJson(res, 404, { error: "Khong tim thay viec." });
+        return sendJson(res, 404, { error: "Không tìm thấy việc." });
       }
 
       const body = await readJson(req);
@@ -852,12 +852,12 @@ async function handleApi(req, res, url) {
       const conversation = db.conversations.find((item) => item.id === conversationId);
 
       if (!conversation || !conversation.participantIds.includes(session.user.id)) {
-        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
       }
 
       const allowedTypes = new Set(["offer", "answer", "candidate", "hangup", "reject", "busy", "join"]);
       if (!allowedTypes.has(type) || !callId) {
-        return sendJson(res, 400, { error: "Tin hieu cuoc goi khong hop le." });
+        return sendJson(res, 400, { error: "Tín hiệu cuộc gọi không hợp lệ." });
       }
 
       const recipients =
@@ -901,9 +901,9 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    sendJson(res, 404, { error: "API khong ton tai." });
+    sendJson(res, 404, { error: "API không tồn tại." });
   } catch (error) {
-    sendJson(res, 500, { error: error.message || "Co loi xay ra." });
+    sendJson(res, 500, { error: error.message || "Có lỗi xảy ra." });
   }
 }
 
@@ -929,7 +929,7 @@ function acceptRequest(currentUser, request, res) {
       id: createId("msg"),
       conversationId: conversation.id,
       senderId: currentUser.id,
-      text: "Chung ta da ket ban. Bat dau tro chuyen nhe!",
+      text: "Chúng ta đã kết bạn. Bắt đầu trò chuyện nhé!",
       type: "system",
       createdAt: new Date().toISOString()
     });
@@ -975,6 +975,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, "0.0.0.0", () => {
   saveDb();
-  console.log(`Gmail Chat running at http://localhost:${port}`);
-  console.log("Open the same URL from another browser/device on this network to test realtime chat.");
+  console.log(`Gmail Chat đang chạy tại http://localhost:${port}`);
+  console.log("Mở cùng URL từ trình duyệt/thiết bị khác trong mạng này để thử chat realtime.");
 });

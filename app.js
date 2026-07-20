@@ -84,7 +84,7 @@ async function api(path, options = {}) {
     body: options.body && typeof options.body !== "string" ? JSON.stringify(options.body) : options.body
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Co loi xay ra.");
+  if (!response.ok) throw new Error(data.error || "Có lỗi xảy ra.");
   return data;
 }
 
@@ -159,9 +159,9 @@ function connectEvents() {
   });
   events.addEventListener("call-signal", (event) => {
     try {
-      handleCallSignal(JSON.parse(event.data)).catch(() => showToast("Tin hieu cuoc goi bi loi."));
+      handleCallSignal(JSON.parse(event.data)).catch(() => showToast("Tín hiệu cuộc gọi bị lỗi."));
     } catch {
-      showToast("Khong doc duoc tin hieu cuoc goi.");
+      showToast("Không đọc được tín hiệu cuộc gọi.");
     }
   });
 }
@@ -175,18 +175,18 @@ function renderAuth() {
           <div class="brand-mark">G</div>
           <div>
             <h1>Gmail Chat</h1>
-            <p>Dang ky Gmail va chat truc tuyen</p>
+            <p>Đăng ký Gmail và chat trực tuyến</p>
           </div>
         </div>
 
         <div class="auth-tabs">
-          <button type="button" class="${authMode === "login" ? "active" : ""}" data-auth-tab="login">Dang nhap</button>
-          <button type="button" class="${authMode === "register" ? "active" : ""}" data-auth-tab="register">Dang ky</button>
+          <button type="button" class="${authMode === "login" ? "active" : ""}" data-auth-tab="login">Đăng nhập</button>
+          <button type="button" class="${authMode === "register" ? "active" : ""}" data-auth-tab="register">Đăng ký</button>
         </div>
 
         <form id="authForm">
           <div class="field ${authMode === "register" ? "" : "hidden"}">
-            <label for="name">Ten hien thi</label>
+            <label for="name">Tên hiển thị</label>
             <input id="name" name="name" autocomplete="name" placeholder="Nguyen Van A">
           </div>
           <div class="field">
@@ -194,15 +194,15 @@ function renderAuth() {
             <input id="email" name="email" type="email" autocomplete="email" placeholder="ban@gmail.com" required>
           </div>
           <div class="field">
-            <label for="password">Mat khau</label>
-            <input id="password" name="password" type="password" autocomplete="${authMode === "login" ? "current-password" : "new-password"}" placeholder="Toi thieu 6 ky tu" required>
+            <label for="password">Mật khẩu</label>
+            <input id="password" name="password" type="password" autocomplete="${authMode === "login" ? "current-password" : "new-password"}" placeholder="Tối thiểu 6 ký tự" required>
           </div>
-          <button class="primary-btn" type="submit">${authMode === "login" ? "Dang nhap" : "Tao tai khoan"}</button>
+          <button class="primary-btn" type="submit">${authMode === "login" ? "Đăng nhập" : "Tạo tài khoản"}</button>
           <p class="error" id="authError"></p>
         </form>
 
         <p class="hint">
-          Tai khoan thu: <strong>demo1@gmail.com</strong>, <strong>demo2@gmail.com</strong>,
+          Tài khoản thử: <strong>demo1@gmail.com</strong>, <strong>demo2@gmail.com</strong>,
           <strong>demo3@gmail.com</strong> / <strong>123456</strong>.
         </p>
       </section>
@@ -211,11 +211,11 @@ function renderAuth() {
         <div class="phone-preview">
           <div class="phone-screen">
             <div class="preview-top">
-              <strong>Chat, nhom, viec</strong>
-              <span>Tim Gmail, ket ban, tao nhom, giao viec</span>
+              <strong>Chat, nhóm, việc</strong>
+              <span>Tìm Gmail, kết bạn, tạo nhóm, giao việc</span>
             </div>
             <div class="preview-list">
-              ${["Tao nhom 3 nguoi", "Ghim tin quan trong", "Giao viec trong nhom", "Ho so va giao dien"]
+              ${["Tạo nhóm 3 người", "Ghim tin quan trọng", "Giao việc trong nhóm", "Hồ sơ và giao diện"]
                 .map(
                   (item, index) => `
                     <div class="preview-row">
@@ -253,9 +253,9 @@ async function handleAuth(event) {
   const error = $("#authError");
   error.textContent = "";
 
-  if (!isGmail(email)) return (error.textContent = "Vui long dung dia chi @gmail.com.");
-  if (password.length < 6) return (error.textContent = "Mat khau can toi thieu 6 ky tu.");
-  if (authMode === "register" && !name) return (error.textContent = "Vui long nhap ten hien thi.");
+  if (!isGmail(email)) return (error.textContent = "Vui lòng dùng địa chỉ @gmail.com.");
+  if (password.length < 6) return (error.textContent = "Mật khẩu cần tối thiểu 6 ký tự.");
+  if (authMode === "register" && !name) return (error.textContent = "Vui lòng nhập tên hiển thị.");
 
   try {
     const data = await api(authMode === "login" ? "/api/login" : "/api/register", {
@@ -277,36 +277,36 @@ function renderApp() {
   const active = getActiveConversation();
   $("#app").innerHTML = `
     <main class="app-shell">
-      <nav class="rail" aria-label="Dieu huong">
+      <nav class="rail" aria-label="Điều hướng">
         ${renderAvatar(currentUser)}
-        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhan">C</button>
-        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Ban be">F</button>
-        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhom">G</button>
-        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Cong viec">T</button>
+        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn">C</button>
+        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Bạn bè">F</button>
+        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm">G</button>
+        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc">T</button>
         <div class="rail-spacer"></div>
-        <button class="icon-btn" id="settingsBtn" title="Cai dat">S</button>
-        <button class="icon-btn" id="logoutBtn" title="Dang xuat">X</button>
+        <button class="icon-btn" id="settingsBtn" title="Cài đặt">S</button>
+        <button class="icon-btn" id="logoutBtn" title="Đăng xuất">X</button>
       </nav>
 
       <aside class="sidebar">
         <div class="search-zone">
           <label class="search-box">
             <span>@</span>
-            <input id="searchInput" value="${escapeAttr(searchText)}" placeholder="Nhap Gmail, ban be, nhom">
+            <input id="searchInput" value="${escapeAttr(searchText)}" placeholder="Nhập Gmail, bạn bè, nhóm">
           </label>
           <div class="quick-actions">
-            <button class="small-btn" id="searchBtn">Tim Gmail</button>
-            <button class="small-btn" id="newGroupBtn">Tao nhom</button>
+            <button class="small-btn" id="searchBtn">Tìm Gmail</button>
+            <button class="small-btn" id="newGroupBtn">Tạo nhóm</button>
           </div>
         </div>
 
         <div class="section-tabs wide">
-          ${renderTab("messages", "Tin nhan")}
-          ${renderTab("search", "Tim ban")}
-          ${renderTab("friends", `Ban be ${friends.length}`)}
-          ${renderTab("groups", "Nhom")}
-          ${renderTab("tasks", "Viec")}
-          ${renderTab("requests", `Loi moi ${requests.length ? `(${requests.length})` : ""}`)}
+          ${renderTab("messages", "Tin nhắn")}
+          ${renderTab("search", "Tìm bạn")}
+          ${renderTab("friends", `Bạn bè ${friends.length}`)}
+          ${renderTab("groups", "Nhóm")}
+          ${renderTab("tasks", "Việc")}
+          ${renderTab("requests", `Lời mời ${requests.length ? `(${requests.length})` : ""}`)}
         </div>
 
         <div class="conversation-list">
@@ -335,6 +335,17 @@ function renderTab(tab, label) {
   return `<button class="${activeTab === tab ? "active" : ""}" data-tab="${tab}">${escapeHtml(label)}</button>`;
 }
 
+function friendStatusLabel(status) {
+  const labels = {
+    self: "Chính bạn",
+    friend: "Bạn bè",
+    requested: "Đã gửi lời mời",
+    incoming: "Đang chờ nhận",
+    none: "Chưa kết bạn"
+  };
+  return labels[status] || "";
+}
+
 function renderSidebarList() {
   if (activeTab === "search") return renderSearchResults();
   if (activeTab === "friends") return renderFriendsList();
@@ -346,7 +357,7 @@ function renderSidebarList() {
 
 function renderSearchResults() {
   if (!searchResults.length) {
-    return `<div class="empty-state">Nhap Gmail roi bam Tim Gmail de gui loi moi ket ban.</div>`;
+    return `<div class="empty-state">Nhập Gmail rồi bấm Tìm Gmail để gửi lời mời kết bạn.</div>`;
   }
   return searchResults
     .map(
@@ -365,7 +376,7 @@ function renderSearchResults() {
 }
 
 function renderFriendsList() {
-  if (!friends.length) return `<div class="empty-state">Ban chua co ban be. Hay tim Gmail de ket ban.</div>`;
+  if (!friends.length) return `<div class="empty-state">Bạn chưa có bạn bè. Hãy tìm Gmail để kết bạn.</div>`;
   return friends
     .map(
       (friend) => `
@@ -376,7 +387,7 @@ function renderFriendsList() {
             <p>${escapeHtml(friend.email)}</p>
           </div>
           <div class="row-actions">
-            <button class="mini-action ghost" data-profile="${escapeAttr(friend.id)}">Ho so</button>
+            <button class="mini-action ghost" data-profile="${escapeAttr(friend.id)}">Hồ sơ</button>
             <button class="mini-action" data-open-conversation="${escapeAttr(friend.conversationId)}">Chat</button>
           </div>
         </div>
@@ -387,7 +398,7 @@ function renderFriendsList() {
 
 function renderGroupsList() {
   const groups = conversations.filter((item) => item.type === "group");
-  if (!groups.length) return `<div class="empty-state">Chua co nhom. Can it nhat 3 nguoi da ket ban voi nhau de tao nhom.</div>`;
+  if (!groups.length) return `<div class="empty-state">Chưa có nhóm. Cần ít nhất 3 người đã kết bạn với nhau để tạo nhóm.</div>`;
   return groups.map((item) => renderConversationButton(item)).join("");
 }
 
@@ -397,7 +408,7 @@ function renderConversationList() {
     const haystack = `${item.peer.name} ${item.peer.email} ${item.lastMessage?.text || ""}`.toLowerCase();
     return haystack.includes(query);
   });
-  if (!list.length) return `<div class="empty-state">Chua co cuoc tro chuyen nao.</div>`;
+  if (!list.length) return `<div class="empty-state">Chưa có cuộc trò chuyện nào.</div>`;
   return list.map((item) => renderConversationButton(item)).join("");
 }
 
@@ -413,7 +424,7 @@ function renderConversationButton(item) {
       </div>
       <div>
         <span class="time">${escapeHtml(formatTime(last?.createdAt))}</span>
-        ${item.type === "group" ? `<span class="status-label slim">Nhom</span>` : ""}
+        ${item.type === "group" ? `<span class="status-label slim">Nhóm</span>` : ""}
         ${openTasks ? `<span class="badge">${openTasks}</span>` : ""}
       </div>
     </button>
@@ -421,18 +432,18 @@ function renderConversationButton(item) {
 }
 
 function renderTasksList(list, showConversation) {
-  if (!list.length) return `<div class="empty-state">Chua co cong viec nao.</div>`;
+  if (!list.length) return `<div class="empty-state">Chưa có công việc nào.</div>`;
   return list
     .map(
       (task) => `
         <div class="task-row ${task.status === "done" ? "done" : ""}">
           <div>
             <strong>${escapeHtml(task.title)}</strong>
-            <p>${escapeHtml(task.description || "Khong co mo ta")}</p>
-            <span>${escapeHtml(task.assignee?.name || "Chua gan")} ${showConversation ? `- ${escapeHtml(task.conversationName || "")}` : ""}</span>
+            <p>${escapeHtml(task.description || "Không có mô tả")}</p>
+            <span>${escapeHtml(task.assignee?.name || "Chưa gán")} ${showConversation ? `- ${escapeHtml(task.conversationName || "")}` : ""}</span>
           </div>
           <button class="mini-action ${task.status === "done" ? "ghost" : ""}" data-task-toggle="${escapeAttr(task.id)}" data-next-status="${task.status === "done" ? "open" : "done"}">
-            ${task.status === "done" ? "Mo lai" : "Xong"}
+            ${task.status === "done" ? "Mở lại" : "Xong"}
           </button>
         </div>
       `
@@ -441,7 +452,7 @@ function renderTasksList(list, showConversation) {
 }
 
 function renderRequestsList() {
-  if (!requests.length) return `<div class="empty-state">Chua co loi moi ket ban nao.</div>`;
+  if (!requests.length) return `<div class="empty-state">Chưa có lời mời kết bạn nào.</div>`;
   return requests
     .map(
       (request) => `
@@ -459,10 +470,10 @@ function renderRequestsList() {
 }
 
 function renderFriendAction(user) {
-  if (user.status === "friend") return `<span class="status-label">Ban be</span>`;
-  if (user.status === "requested") return `<span class="status-label">Da gui</span>`;
-  if (user.status === "incoming") return `<span class="status-label">Cho nhan</span>`;
-  return `<button class="mini-action" data-add-friend="${escapeAttr(user.email)}">Ket ban</button>`;
+  if (user.status === "friend") return `<span class="status-label">Bạn bè</span>`;
+  if (user.status === "requested") return `<span class="status-label">Đã gửi</span>`;
+  if (user.status === "incoming") return `<span class="status-label">Chờ nhận</span>`;
+  return `<button class="mini-action" data-add-friend="${escapeAttr(user.email)}">Kết bạn</button>`;
 }
 
 function renderChat(active) {
@@ -472,27 +483,27 @@ function renderChat(active) {
         ${renderAvatar(active.peer)}
         <div>
           <strong>${escapeHtml(active.peer.name)}</strong>
-          <span>${escapeHtml(active.type === "group" ? active.peer.email : `${active.peer.email} - dang san sang chat`)}</span>
+          <span>${escapeHtml(active.type === "group" ? active.peer.email : `${active.peer.email} - đang sẵn sàng chat`)}</span>
         </div>
       </div>
       <div class="header-actions">
-        <button title="${active.type === "group" ? "Goi nhom" : "Goi video"}" id="videoCallBtn">${active.type === "group" ? "Goi nhom" : "Video"}</button>
-        <button title="Giao viec" id="newTaskBtn">Viec</button>
-        <button title="Lam moi" id="headerRefreshBtn">R</button>
+        <button title="${active.type === "group" ? "Gọi nhóm" : "Gọi video"}" id="videoCallBtn">${active.type === "group" ? "Gọi nhóm" : "Video"}</button>
+        <button title="Giao việc" id="newTaskBtn">Việc</button>
+        <button title="Làm mới" id="headerRefreshBtn">R</button>
       </div>
     </header>
 
     ${active.pinnedMessage ? renderPinnedMessage(active.pinnedMessage) : ""}
 
     <div class="messages" id="messages">
-      <div class="date-chip">Hom nay</div>
+      <div class="date-chip">Hôm nay</div>
       ${messages.map((message) => renderMessage(message)).join("")}
     </div>
 
     <form class="composer" id="messageForm">
-      <button class="tool-btn" type="button" id="emojiBtn" title="Bieu cam">:)</button>
-      <textarea id="messageInput" rows="1" placeholder="Nhap tin nhan..."></textarea>
-      <button class="send-btn" title="Gui" type="submit">Send</button>
+      <button class="tool-btn" type="button" id="emojiBtn" title="Biểu cảm">:)</button>
+      <textarea id="messageInput" rows="1" placeholder="Nhập tin nhắn..."></textarea>
+      <button class="send-btn" title="Gửi" type="submit">Gửi</button>
     </form>
   `;
 }
@@ -500,9 +511,9 @@ function renderChat(active) {
 function renderPinnedMessage(message) {
   return `
     <div class="pinned-bar">
-      <strong>Da ghim</strong>
+      <strong>Đã ghim</strong>
       <span>${escapeHtml(message.text)}</span>
-      <button class="mini-action ghost" id="unpinBtn">Bo ghim</button>
+      <button class="mini-action ghost" id="unpinBtn">Bỏ ghim</button>
     </div>
   `;
 }
@@ -515,7 +526,7 @@ function renderMessage(message) {
       <div class="bubble">
         <p>${escapeHtml(message.text)}</p>
         <time>${escapeHtml(formatTime(message.createdAt))}</time>
-        <button class="pin-message-btn" data-pin-message="${escapeAttr(message.id)}">${message.isPinned ? "Dang ghim" : "Ghim"}</button>
+        <button class="pin-message-btn" data-pin-message="${escapeAttr(message.id)}">${message.isPinned ? "Đang ghim" : "Ghim"}</button>
       </div>
     </div>
   `;
@@ -531,7 +542,7 @@ function renderDetails(active) {
         <p>${escapeHtml(active.peer.email)}</p>
       </div>
       <div class="detail-block">
-        <h3>Thanh vien</h3>
+        <h3>Thành viên</h3>
         ${(active.members || [])
           .map(
             (member) => `
@@ -541,14 +552,14 @@ function renderDetails(active) {
                   <strong>${escapeHtml(member.name)}</strong>
                   <p>${escapeHtml(member.email)}</p>
                 </div>
-                <button class="mini-action ghost" data-profile="${escapeAttr(member.id)}">Ho so</button>
+                <button class="mini-action ghost" data-profile="${escapeAttr(member.id)}">Hồ sơ</button>
               </div>
             `
           )
           .join("")}
       </div>
       <div class="detail-block">
-        <h3>Cong viec trong nhom</h3>
+        <h3>Công việc trong nhóm</h3>
         ${renderTasksList(conversationTasks, false)}
       </div>
     `;
@@ -562,13 +573,13 @@ function renderDetails(active) {
       <p>${escapeHtml(active.peer.email)}</p>
     </div>
     <div class="detail-block">
-      <button class="muted-btn" data-profile="${escapeAttr(active.peer.id)}">Xem ho so</button>
+      <button class="muted-btn" data-profile="${escapeAttr(active.peer.id)}">Xem hồ sơ</button>
     </div>
     <div class="detail-block">
-      <button class="muted-btn danger-text" data-unfriend="${escapeAttr(active.peer.id)}">Xoa ket ban</button>
+      <button class="muted-btn danger-text" data-unfriend="${escapeAttr(active.peer.id)}">Xóa kết bạn</button>
     </div>
     <div class="detail-block">
-      <h3>Cong viec lien quan</h3>
+      <h3>Công việc lien quan</h3>
       ${renderTasksList(conversationTasks, false)}
     </div>
   `;
@@ -583,8 +594,8 @@ function renderAccountDetails() {
       <p>${escapeHtml(currentUser.email)}</p>
     </div>
     <div class="detail-block">
-      <h3>Thong ke</h3>
-      <p class="detail-copy">${friends.length} ban be - ${conversations.filter((item) => item.type === "group").length} nhom</p>
+      <h3>Thống kê</h3>
+      <p class="detail-copy">${friends.length} bạn bè - ${conversations.filter((item) => item.type === "group").length} nhóm</p>
     </div>
   `;
 }
@@ -592,8 +603,8 @@ function renderAccountDetails() {
 function renderEmptyChat() {
   return `
     <div class="empty-chat">
-      <h2>Bat dau bang Gmail</h2>
-      <p>Ket ban, tao nhom 3 nguoi, giao viec, ghim tin nhan va goi video.</p>
+      <h2>Bắt đầu bằng Gmail</h2>
+      <p>Kết bạn, tạo nhóm 3 người, giao việc, ghim tin nhắn và gọi video.</p>
     </div>
   `;
 }
@@ -611,15 +622,15 @@ function renderGroupModal() {
     <div class="modal-layer">
       <form class="modal-panel" id="groupForm">
         <header>
-          <h2>Tao nhom moi</h2>
+          <h2>Tạo nhóm moi</h2>
           <button type="button" class="modal-close" data-close-modal>x</button>
         </header>
         <div class="field">
-          <label>Ten nhom</label>
-          <input name="name" placeholder="Vi du: Nhom du an">
+          <label>Ten nhóm</label>
+          <input name="name" placeholder="Vi du: Nhóm du an">
         </div>
         <div class="member-picker">
-          <p>Chon it nhat 2 ban be. Tat ca thanh vien can da ket ban voi nhau.</p>
+          <p>Chọn ít nhất 2 bạn bè. Tất cả thành viên cần đã kết bạn với nhau.</p>
           ${friends
             .map(
               (friend) => `
@@ -632,7 +643,7 @@ function renderGroupModal() {
             )
             .join("")}
         </div>
-        <button class="primary-btn" type="submit">Tao nhom</button>
+        <button class="primary-btn" type="submit">Tạo nhóm</button>
       </form>
     </div>
   `;
@@ -645,12 +656,12 @@ function renderTaskModal() {
     <div class="modal-layer">
       <form class="modal-panel" id="taskForm">
         <header>
-          <h2>Giao viec</h2>
+          <h2>Giao việc</h2>
           <button type="button" class="modal-close" data-close-modal>x</button>
         </header>
         <div class="field">
-          <label>Ten viec</label>
-          <input name="title" placeholder="Nhap viec can lam">
+          <label>Tên việc</label>
+          <input name="title" placeholder="Nhập việc cần làm">
         </div>
         <div class="field">
           <label>Giao cho</label>
@@ -659,10 +670,10 @@ function renderTaskModal() {
           </select>
         </div>
         <div class="field">
-          <label>Mo ta</label>
-          <textarea name="description" rows="3" placeholder="Noi dung, deadline, ghi chu..."></textarea>
+          <label>Mô tả</label>
+          <textarea name="description" rows="3" placeholder="Nội dung, deadline, ghi chú..."></textarea>
         </div>
-        <button class="primary-btn" type="submit">Giao viec</button>
+        <button class="primary-btn" type="submit">Giao việc</button>
       </form>
     </div>
   `;
@@ -673,35 +684,41 @@ function renderSettingsModal() {
     <div class="modal-layer">
       <form class="modal-panel" id="settingsForm">
         <header>
-          <h2>Cai dat tai khoan</h2>
+          <h2>Cài đặt tài khoản</h2>
           <button type="button" class="modal-close" data-close-modal>x</button>
         </header>
         <div class="profile-preview">
           ${renderAvatar(currentUser)}
           <div>
             <strong>${escapeHtml(currentUser.name)}</strong>
-            <p>${escapeHtml(currentUser.email)} - ${friends.length} ban be</p>
+            <p>${escapeHtml(currentUser.email)} - ${friends.length} bạn bè</p>
           </div>
         </div>
         <div class="field">
-          <label>Ten hien thi</label>
+          <label>Tên hiển thị</label>
           <input name="name" value="${escapeAttr(currentUser.name)}">
         </div>
         <div class="field">
-          <label>Anh dai dien URL</label>
+          <label>Ảnh đại diện URL</label>
           <input name="avatarUrl" value="${escapeAttr(currentUser.avatarUrl || "")}" placeholder="https://...">
         </div>
         <div class="field">
-          <label>Gioi thieu</label>
+          <label>Giới thiệu</label>
           <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
         </div>
         <div class="field">
-          <label>Giao dien</label>
+          <label>Giao diện</label>
           <select name="theme">
-            ${["light", "dark", "system"].map((theme) => `<option value="${theme}" ${currentUser.theme === theme ? "selected" : ""}>${theme}</option>`).join("")}
+            ${[
+              ["light", "Sáng"],
+              ["dark", "Tối"],
+              ["system", "Theo hệ thống"]
+            ]
+              .map(([theme, label]) => `<option value="${theme}" ${currentUser.theme === theme ? "selected" : ""}>${label}</option>`)
+              .join("")}
           </select>
         </div>
-        <button class="primary-btn" type="submit">Luu cai dat</button>
+        <button class="primary-btn" type="submit">Lưu cài đặt</button>
       </form>
     </div>
   `;
@@ -712,7 +729,7 @@ function renderProfileModal(profile) {
     <div class="modal-layer">
       <section class="modal-panel profile-card">
         <header>
-          <h2>Ho so</h2>
+          <h2>Hồ sơ</h2>
           <button type="button" class="modal-close" data-close-profile>x</button>
         </header>
         <div class="profile-hero">
@@ -721,12 +738,12 @@ function renderProfileModal(profile) {
           <p>${escapeHtml(profile.email)}</p>
         </div>
         <div class="profile-facts">
-          <span>${profile.friendCount || 0} ban be</span>
-          <span>${profile.groupsInCommon || 0} nhom chung</span>
-          <span>${escapeHtml(profile.friendStatus || "")}</span>
+          <span>${profile.friendCount || 0} bạn bè</span>
+          <span>${profile.groupsInCommon || 0} nhóm chung</span>
+          <span>${escapeHtml(friendStatusLabel(profile.friendStatus))}</span>
         </div>
-        <p class="detail-copy">${escapeHtml(profile.about || "Chua co gioi thieu.")}</p>
-        ${profile.friendStatus === "friend" ? `<button class="muted-btn danger-text" data-unfriend="${escapeAttr(profile.id)}">Xoa ket ban</button>` : ""}
+        <p class="detail-copy">${escapeHtml(profile.about || "Chưa có giới thiệu.")}</p>
+        ${profile.friendStatus === "friend" ? `<button class="muted-btn danger-text" data-unfriend="${escapeAttr(profile.id)}">Xóa kết bạn</button>` : ""}
       </section>
     </div>
   `;
@@ -744,9 +761,9 @@ function renderRemoteFrame(peer, index) {
       <video data-remote-video="${escapeAttr(user.id || index)}" autoplay playsinline></video>
       <div class="video-placeholder ${peer.remoteStream ? "hidden" : ""}">
         <div class="call-avatar">${escapeHtml(user.avatar || "?")}</div>
-        <p>${escapeHtml(peer.status || `Dang cho video cua ${user.name || "thanh vien"}...`)}</p>
+        <p>${escapeHtml(peer.status || `Đang chờ video của ${user.name || "thành viên"}...`)}</p>
       </div>
-      <span class="video-name">${escapeHtml(user.name || "Thanh vien")}</span>
+      <span class="video-name">${escapeHtml(user.name || "Thành viên")}</span>
     </div>
   `;
 }
@@ -757,8 +774,8 @@ function renderCallLayer() {
       <div class="call-layer">
         <section class="call-panel compact">
           <div class="call-avatar">${escapeHtml(incomingCall.from.avatar)}</div>
-          <h2>${incomingCall.isGroup ? "Cuoc goi nhom den" : "Cuoc goi video den"}</h2>
-          <p>${escapeHtml(incomingCall.from.name)} dang goi ${incomingCall.isGroup ? `trong ${incomingCall.conversationName}` : "cho ban"}.</p>
+          <h2>${incomingCall.isGroup ? "Cuộc gọi nhóm đến" : "Cuộc gọi video đến"}</h2>
+          <p>${escapeHtml(incomingCall.from.name)} đang gọi ${incomingCall.isGroup ? `trong ${incomingCall.conversationName}` : "cho bạn"}.</p>
           <div class="call-actions">
             <button class="call-btn danger" id="rejectCallBtn">Tu choi</button>
             <button class="call-btn accept" id="acceptCallBtn">Nhan</button>
@@ -775,8 +792,8 @@ function renderCallLayer() {
       <section class="call-panel">
         <header class="call-topbar">
           <div>
-            <strong>${escapeHtml(callState.title || "Cuoc goi video")}</strong>
-            <span>${escapeHtml(callState.status || "Dang ket noi...")}</span>
+            <strong>${escapeHtml(callState.title || "Cuộc gọi video")}</strong>
+            <span>${escapeHtml(callState.status || "Đang kết nối...")}</span>
           </div>
           <button class="call-icon-btn" id="minimizeCallBtn" title="Thu nho">-</button>
         </header>
@@ -786,20 +803,20 @@ function renderCallLayer() {
               <div class="video-frame remote">
                 <div class="video-placeholder">
                   <div class="call-avatar">?</div>
-                  <p>Dang cho thanh vien tham gia...</p>
+                  <p>Đang chờ thành viên tham gia...</p>
                 </div>
               </div>
             `}
           </div>
           <div class="video-frame local">
             <video id="localVideo" autoplay playsinline muted></video>
-            <span>Ban</span>
+            <span>Bạn</span>
           </div>
         </div>
         <div class="call-actions">
-          <button class="call-btn" id="toggleMicBtn">${callState.micEnabled ? "Tat mic" : "Bat mic"}</button>
-          <button class="call-btn" id="toggleCameraBtn">${callState.cameraEnabled ? "Tat camera" : "Bat camera"}</button>
-          <button class="call-btn danger" id="endCallBtn">Ket thuc</button>
+          <button class="call-btn" id="toggleMicBtn">${callState.micEnabled ? "Tắt mic" : "Bật mic"}</button>
+          <button class="call-btn" id="toggleCameraBtn">${callState.cameraEnabled ? "Tắt camera" : "Bật camera"}</button>
+          <button class="call-btn danger" id="endCallBtn">Kết thúc</button>
         </div>
       </section>
     </div>
@@ -877,7 +894,7 @@ function bindAppEvents() {
   $("#endCallBtn")?.addEventListener("click", () => endCall(true));
   $("#toggleMicBtn")?.addEventListener("click", toggleMic);
   $("#toggleCameraBtn")?.addEventListener("click", toggleCamera);
-  $("#minimizeCallBtn")?.addEventListener("click", () => showToast("Cuoc goi dang hien tren man hinh."));
+  $("#minimizeCallBtn")?.addEventListener("click", () => showToast("Cuộc gọi đang hiển thị trên màn hình."));
   $("#logoutBtn")?.addEventListener("click", logout);
   $("#messageForm")?.addEventListener("submit", sendMessage);
   $("#groupForm")?.addEventListener("submit", createGroup);
@@ -904,12 +921,12 @@ function bindAppEvents() {
 
 async function searchUsers() {
   const email = searchText.trim().toLowerCase();
-  if (!email) return showToast("Nhap Gmail can tim.");
+  if (!email) return showToast("Nhập Gmail cần tìm.");
   activeTab = "search";
   try {
     const data = await api(`/api/search?email=${encodeURIComponent(email)}`);
     searchResults = data.users || [];
-    if (!searchResults.length) showToast("Khong tim thay tai khoan phu hop.");
+    if (!searchResults.length) showToast("Không tìm thấy tài khoản phù hợp.");
     renderApp();
   } catch (err) {
     showToast(err.message);
@@ -919,7 +936,7 @@ async function searchUsers() {
 async function sendFriendRequest(email) {
   try {
     await api("/api/friend-requests", { method: "POST", body: { email } });
-    showToast("Da gui loi moi ket ban.");
+    showToast("Đã gửi lời mời kết bạn.");
     await searchUsers();
     await refreshData({ keepMessages: true });
     renderApp();
@@ -935,7 +952,7 @@ async function acceptFriendRequest(requestId) {
     activeTab = "messages";
     await refreshData();
     renderApp();
-    showToast("Da chap nhan ket ban.");
+    showToast("Đã chấp nhận kết bạn.");
   } catch (err) {
     showToast(err.message);
   }
@@ -955,7 +972,7 @@ async function createGroup(event) {
     activeTab = "messages";
     await refreshData();
     renderApp();
-    showToast("Da tao nhom.");
+    showToast("Đã tạo nhóm.");
   } catch (err) {
     showToast(err.message);
   }
@@ -978,7 +995,7 @@ async function createTask(event) {
     modal = null;
     await refreshData();
     renderApp();
-    showToast("Da giao viec.");
+    showToast("Đã giao việc.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1012,7 +1029,7 @@ async function saveSettings(event) {
     modal = null;
     await refreshData({ keepMessages: true });
     renderApp();
-    showToast("Da luu cai dat.");
+    showToast("Đã lưu cài đặt.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1031,13 +1048,13 @@ async function openProfile(userId) {
 
 async function unfriend(userId) {
   if (!userId) return;
-  if (!window.confirm("Xoa ket ban voi tai khoan nay?")) return;
+  if (!window.confirm("Xóa kết bạn với tài khoản này?")) return;
   try {
     await api(`/api/friends/${userId}`, { method: "DELETE" });
     profileModal = null;
     await refreshData();
     renderApp();
-    showToast("Da xoa ket ban.");
+    showToast("Đã xóa kết bạn.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1065,7 +1082,7 @@ async function pinMessage(messageId) {
     await api(`/api/conversations/${activeConversationId}/pin`, { method: "POST", body: { messageId } });
     await refreshData();
     renderApp();
-    showToast("Da ghim tin nhan.");
+    showToast("Đã ghim tin nhắn.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1077,7 +1094,7 @@ async function unpinMessage() {
     await api(`/api/conversations/${activeConversationId}/pin`, { method: "DELETE" });
     await refreshData();
     renderApp();
-    showToast("Da bo ghim.");
+    showToast("Đã bỏ ghim.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1087,7 +1104,7 @@ async function manualRefresh() {
   try {
     await refreshData();
     renderApp();
-    showToast("Da cap nhat.");
+    showToast("Đã cập nhật.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1117,7 +1134,7 @@ function createPeerConnection(conversationId, callId, remoteUser) {
   peerConnection.onicecandidate = (event) => {
     if (!event.candidate) return;
     sendCallSignal(conversationId, "candidate", { candidate: event.candidate }, callId, remoteUser.id).catch(() => {
-      showToast("Khong gui duoc tin hieu ket noi video.");
+      showToast("Không gửi được tín hiệu kết nối video.");
     });
   };
   peerConnection.ontrack = (event) => {
@@ -1125,20 +1142,20 @@ function createPeerConnection(conversationId, callId, remoteUser) {
     if (!peer) return;
     peer.remoteStream = event.streams[0] || peer.remoteStream || new MediaStream();
     if (!event.streams[0] && event.track) peer.remoteStream.addTrack(event.track);
-    peer.status = "Dang trong cuoc goi";
-    callState.status = "Dang trong cuoc goi";
+    peer.status = "Đang trong cuộc gọi";
+    callState.status = "Đang trong cuộc gọi";
     renderApp();
   };
   peerConnection.onconnectionstatechange = () => {
     const peer = callState?.callId === callId ? callState.peers?.[remoteUser.id] : null;
     if (!peer) return;
     if (peerConnection.connectionState === "connected") {
-      peer.status = "Dang trong cuoc goi";
-      callState.status = "Dang trong cuoc goi";
+      peer.status = "Đang trong cuộc gọi";
+      callState.status = "Đang trong cuộc gọi";
     }
     if (["failed", "disconnected"].includes(peerConnection.connectionState)) {
-      peer.status = "Ket noi dang yeu";
-      callState.status = "Mot so ket noi dang yeu";
+      peer.status = "Kết nối đang yếu";
+      callState.status = "Một số kết nối đang yếu";
     }
     renderApp();
   };
@@ -1156,7 +1173,7 @@ function createCallPeer(remoteUser) {
     peerConnection,
     remoteStream: null,
     pendingCandidates: [],
-    status: "Dang ket noi...",
+    status: "Đang kết nối...",
     offerSent: false
   };
   callState.peers[remoteUser.id] = peer;
@@ -1182,14 +1199,14 @@ async function sendOfferToUser(remoteUser) {
 
 async function startVideoCall() {
   const active = getActiveConversation();
-  if (!active) return showToast("Hay chon mot cuoc tro chuyen de goi.");
-  if (callState || incomingCall) return showToast("Dang co mot cuoc goi khac.");
+  if (!active) return showToast("Hãy chọn một cuộc trò chuyện để gọi.");
+  if (callState || incomingCall) return showToast("Đang có một cuộc gọi khác.");
   if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-    return showToast("Trinh duyet nay chua ho tro video call.");
+    return showToast("Trình duyệt này chưa hỗ trợ video call.");
   }
 
   const remoteMembers = (active.members || []).filter((member) => member.id !== currentUser.id);
-  if (!remoteMembers.length) return showToast("Cuoc tro chuyen nay chua co nguoi khac de goi.");
+  if (!remoteMembers.length) return showToast("Cuộc trò chuyện này chưa có người khác để gọi.");
 
   const callId = makeCallId();
   let localStream;
@@ -1204,7 +1221,7 @@ async function startVideoCall() {
       peer: active.peer,
       localStream,
       peers: {},
-      status: active.type === "group" ? "Dang goi nhom..." : "Dang goi...",
+      status: active.type === "group" ? "Đang gọi nhóm..." : "Đang gọi...",
       micEnabled: true,
       cameraEnabled: true
     };
@@ -1215,7 +1232,7 @@ async function startVideoCall() {
   } catch (err) {
     localStream?.getTracks().forEach((track) => track.stop());
     cleanupCall();
-    showToast(err.name === "NotAllowedError" ? "Ban can cho phep camera va micro." : "Khong bat dau duoc cuoc goi video.");
+    showToast(err.name === "NotAllowedError" ? "Bạn cần cho phép camera và micro." : "Không bắt đầu được cuộc gọi video.");
   }
 }
 
@@ -1264,8 +1281,8 @@ async function handleCallSignal(signal) {
     if (!peer) return;
     await peer.peerConnection.setRemoteDescription(new RTCSessionDescription(signal.payload.description));
     await flushPendingCandidates(peer);
-    peer.status = "Dang trong cuoc goi";
-    callState.status = "Dang trong cuoc goi";
+    peer.status = "Đang trong cuộc gọi";
+    callState.status = "Đang trong cuộc gọi";
     renderApp();
     return;
   }
@@ -1281,21 +1298,21 @@ async function handleCallSignal(signal) {
   }
   if (signal.type === "reject") {
     removeCallPeer(signal.from?.id);
-    showToast(`${signal.from?.name || "Mot thanh vien"} da tu choi cuoc goi.`);
+    showToast(`${signal.from?.name || "Mot thành viên"} đã từ chối cuộc gọi.`);
     if (!getCallPeers().length) cleanupCall();
     renderApp();
     return;
   }
   if (signal.type === "busy") {
     removeCallPeer(signal.from?.id);
-    showToast(`${signal.from?.name || "Doi phuong"} dang ban.`);
+    showToast(`${signal.from?.name || "Đối phương"} đang bận.`);
     if (!getCallPeers().length) cleanupCall();
     renderApp();
     return;
   }
   if (signal.type === "hangup") {
     removeCallPeer(signal.from?.id);
-    showToast(`${signal.from?.name || "Mot thanh vien"} da roi cuoc goi.`);
+    showToast(`${signal.from?.name || "Mot thành viên"} đã rời cuộc gọi.`);
     if (!getCallPeers().length || callState.conversationType !== "group") cleanupCall();
     renderApp();
   }
@@ -1336,7 +1353,7 @@ async function acceptIncomingCall() {
       peer: pending.from,
       localStream,
       peers: {},
-      status: "Dang ket noi...",
+      status: "Đang kết nối...",
       micEnabled: true,
       cameraEnabled: true
     };
@@ -1370,7 +1387,7 @@ async function acceptIncomingCall() {
     }
     cleanupCall();
     renderApp();
-    showToast(err.name === "NotAllowedError" ? "Ban can cho phep camera va micro." : "Khong nhan duoc cuoc goi.");
+    showToast(err.name === "NotAllowedError" ? "Bạn cần cho phép camera và micro." : "Không nhận được cuộc gọi.");
   }
 }
 
@@ -1433,7 +1450,7 @@ function removeCallPeer(userId) {
   peer.remoteStream?.getTracks().forEach((track) => track.stop());
   peer.peerConnection?.close();
   delete callState.peers[userId];
-  callState.status = getCallPeers().length ? "Dang trong cuoc goi" : "Cuoc goi da ket thuc";
+  callState.status = getCallPeers().length ? "Đang trong cuộc gọi" : "Cuộc gọi đã kết thúc";
 }
 
 function cleanupCall() {
