@@ -13,6 +13,7 @@ const mimeTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -451,7 +452,7 @@ function canSeeProfile(viewerId, targetId) {
 function validateAvatarUrl(value) {
   const avatarUrl = String(value || "").trim();
   if (!avatarUrl) return "";
-  if (avatarUrl.length > 800) throw new Error("Link ảnh đại diện quá dài.");
+  if (avatarUrl.length > 900_000) throw new Error("Ảnh đại diện quá lớn. Vui lòng chọn ảnh nhỏ hơn.");
   if (!/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("data:image/")) {
     throw new Error("Ảnh đại diện cần là URL http/https hoặc data image.");
   }

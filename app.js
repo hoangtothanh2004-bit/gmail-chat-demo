@@ -21,6 +21,8 @@ let profileModal = null;
 let audioContext = null;
 let ringtoneTimer = null;
 let lastMessageSoundAt = 0;
+let deferredInstallPrompt = null;
+let mobileListOpen = false;
 
 const rtcConfig = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
@@ -74,6 +76,43 @@ function renderAvatar(entity, extraClass = "") {
     return `<div class="avatar ${extraClass}"><img src="${escapeAttr(avatarUrl)}" alt=""></div>`;
   }
   return `<div class="avatar ${extraClass}">${escapeHtml(label)}</div>`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Không đọc được ảnh đã chọn."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("File đã chọn không phải ảnh hợp lệ."));
+    image.src = dataUrl;
+  });
+}
+
+async function resizeAvatarFile(file) {
+  if (!file) return "";
+  if (!file.type.startsWith("image/")) throw new Error("Vui lòng chọn đúng file ảnh.");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Ảnh quá lớn. Vui lòng chọn ảnh dưới 8MB.");
+
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const maxSize = 512;
+  const ratio = Math.min(1, maxSize / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * ratio));
+  const height = Math.max(1, Math.round(image.height * ratio));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.86);
 }
 
 async function api(path, options = {}) {
@@ -165,6 +204,10 @@ function stopRingtone() {
 function shouldPlayRefreshSound(payload) {
   if (!payload?.actorId || payload.actorId === currentUser?.id) return false;
   return messageSoundReasons.has(payload.reason);
+}
+
+function isStandaloneApp() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
 }
 
 function applyTheme() {
@@ -355,7 +398,7 @@ function renderApp() {
   applyTheme();
   const active = getActiveConversation();
   $("#app").innerHTML = `
-    <main class="app-shell">
+    <main class="app-shell tab-${escapeAttr(activeTab)} ${mobileListOpen ? "mobile-list-open" : ""}">
       <nav class="rail" aria-label="Điều hướng">
         ${renderAvatar(currentUser)}
         <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn">Tin nhắn</button>
@@ -566,6 +609,7 @@ function renderChat(active) {
         </div>
       </div>
       <div class="header-actions">
+        <button class="mobile-only" title="Mở danh sách" id="mobileListBtn">Danh sách</button>
         <button title="${active.type === "group" ? "Gọi nhóm" : "Gọi video"}" id="videoCallBtn">${active.type === "group" ? "Gọi nhóm" : "Gọi video"}</button>
         <button title="Giao việc" id="newTaskBtn">Giao việc</button>
         <button title="Làm mới" id="headerRefreshBtn">Làm mới</button>
@@ -658,7 +702,7 @@ function renderDetails(active) {
       <button class="muted-btn danger-text" data-unfriend="${escapeAttr(active.peer.id)}">Xóa kết bạn</button>
     </div>
     <div class="detail-block">
-      <h3>Công việc lien quan</h3>
+      <h3>Công việc liên quan</h3>
       ${renderTasksList(conversationTasks, false)}
     </div>
   `;
@@ -701,12 +745,12 @@ function renderGroupModal() {
     <div class="modal-layer">
       <form class="modal-panel" id="groupForm">
         <header>
-          <h2>Tạo nhóm moi</h2>
+          <h2>Tạo nhóm mới</h2>
           <button type="button" class="modal-close" data-close-modal>x</button>
         </header>
         <div class="field">
-          <label>Ten nhóm</label>
-          <input name="name" placeholder="Vi du: Nhóm du an">
+          <label>Tên nhóm</label>
+          <input name="name" placeholder="Ví dụ: Nhóm dự án">
         </div>
         <div class="member-picker">
           <p>Chọn ít nhất 2 bạn bè. Tất cả thành viên cần đã kết bạn với nhau.</p>
@@ -778,8 +822,13 @@ function renderSettingsModal() {
           <input name="name" value="${escapeAttr(currentUser.name)}">
         </div>
         <div class="field">
-          <label>Ảnh đại diện URL</label>
+          <label>Ảnh đại diện bằng URL</label>
           <input name="avatarUrl" value="${escapeAttr(currentUser.avatarUrl || "")}" placeholder="https://...">
+        </div>
+        <div class="field">
+          <label>Hoặc chọn ảnh từ máy</label>
+          <input name="avatarFile" type="file" accept="image/*">
+          <p class="field-hint">Ảnh sẽ được tự nén trước khi lưu làm ảnh đại diện.</p>
         </div>
         <div class="field">
           <label>Giới thiệu</label>
@@ -796,6 +845,13 @@ function renderSettingsModal() {
               .map(([theme, label]) => `<option value="${theme}" ${currentUser.theme === theme ? "selected" : ""}>${label}</option>`)
               .join("")}
           </select>
+        </div>
+        <div class="install-box">
+          <div>
+            <strong>Ứng dụng cài đặt</strong>
+            <p>${isStandaloneApp() ? "Bạn đang mở bằng bản đã cài." : "Cài app vào màn hình chính hoặc máy tính để mở nhanh hơn."}</p>
+          </div>
+          <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
         </div>
         <button class="primary-btn" type="submit">Lưu cài đặt</button>
       </form>
@@ -906,6 +962,7 @@ function bindAppEvents() {
   document.querySelectorAll("[data-tab], [data-rail-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       activeTab = button.dataset.tab || button.dataset.railTab;
+      if (button.dataset.railTab || window.matchMedia("(max-width: 820px)").matches) mobileListOpen = true;
       renderApp();
     });
   });
@@ -914,6 +971,7 @@ function bindAppEvents() {
     button.addEventListener("click", async () => {
       activeConversationId = button.dataset.conversation || button.dataset.openConversation;
       activeTab = "messages";
+      mobileListOpen = false;
       await loadMessages(activeConversationId);
       renderApp();
     });
@@ -966,6 +1024,10 @@ function bindAppEvents() {
   });
   $("#refreshBtn")?.addEventListener("click", manualRefresh);
   $("#headerRefreshBtn")?.addEventListener("click", manualRefresh);
+  $("#mobileListBtn")?.addEventListener("click", () => {
+    mobileListOpen = true;
+    renderApp();
+  });
   $("#unpinBtn")?.addEventListener("click", unpinMessage);
   $("#videoCallBtn")?.addEventListener("click", startVideoCall);
   $("#acceptCallBtn")?.addEventListener("click", acceptIncomingCall);
@@ -979,6 +1041,7 @@ function bindAppEvents() {
   $("#groupForm")?.addEventListener("submit", createGroup);
   $("#taskForm")?.addEventListener("submit", createTask);
   $("#settingsForm")?.addEventListener("submit", saveSettings);
+  $("#installAppBtn")?.addEventListener("click", installApp);
   $("#emojiBtn")?.addEventListener("click", () => {
     const input = $("#messageInput");
     input.value = `${input.value} :)`.trimStart();
@@ -1029,6 +1092,7 @@ async function acceptFriendRequest(requestId) {
     const data = await api(`/api/friend-requests/${requestId}/accept`, { method: "POST" });
     activeConversationId = data.conversation.id;
     activeTab = "messages";
+    mobileListOpen = false;
     await refreshData();
     renderApp();
     showToast("Đã chấp nhận kết bạn.");
@@ -1049,6 +1113,7 @@ async function createGroup(event) {
     modal = null;
     activeConversationId = data.conversation.id;
     activeTab = "messages";
+    mobileListOpen = false;
     await refreshData();
     renderApp();
     showToast("Đã tạo nhóm.");
@@ -1093,12 +1158,14 @@ async function updateTaskStatus(taskId, status) {
 async function saveSettings(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
+  const avatarFile = form.get("avatarFile");
   try {
+    const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : form.get("avatarUrl");
     const data = await api("/api/me", {
       method: "PATCH",
       body: {
         name: form.get("name"),
-        avatarUrl: form.get("avatarUrl"),
+        avatarUrl,
         about: form.get("about"),
         theme: form.get("theme")
       }
@@ -1112,6 +1179,20 @@ async function saveSettings(event) {
   } catch (err) {
     showToast(err.message);
   }
+}
+
+async function installApp() {
+  if (isStandaloneApp()) return showToast("Ứng dụng đã được cài trên thiết bị này.");
+  if (!deferredInstallPrompt) {
+    showToast("Nếu chưa thấy nút cài, hãy mở menu trình duyệt và chọn Cài đặt ứng dụng hoặc Thêm vào màn hình chính.");
+    return;
+  }
+
+  deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+  deferredInstallPrompt = null;
+  showToast(choice?.outcome === "accepted" ? "Đã bắt đầu cài ứng dụng." : "Bạn đã hủy cài ứng dụng.");
+  renderApp();
 }
 
 async function openProfile(userId) {
@@ -1593,8 +1674,26 @@ function scrollMessagesToBottom() {
   if (element) element.scrollTop = element.scrollHeight;
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  });
+}
+
 ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
   window.addEventListener(eventName, unlockAudio, { passive: true });
 });
 
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+});
+
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  showToast("Ứng dụng đã được cài thành công.");
+});
+
+registerServiceWorker();
 boot();
