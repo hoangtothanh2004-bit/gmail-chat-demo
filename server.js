@@ -25,51 +25,114 @@ const eventClients = new Map();
 let db = loadDb();
 
 function loadDb() {
-  if (fs.existsSync(dbPath)) {
-    try {
-      return JSON.parse(fs.readFileSync(dbPath, "utf8"));
-    } catch {
-      return createDb();
+  if (!fs.existsSync(dbPath)) return createDb();
+
+  try {
+    return normalizeDb(JSON.parse(fs.readFileSync(dbPath, "utf8")));
+  } catch {
+    return createDb();
+  }
+}
+
+function normalizeDb(data) {
+  const next = {
+    users: Array.isArray(data.users) ? data.users : [],
+    friendRequests: Array.isArray(data.friendRequests) ? data.friendRequests : [],
+    conversations: Array.isArray(data.conversations) ? data.conversations : [],
+    messages: Array.isArray(data.messages) ? data.messages : [],
+    tasks: Array.isArray(data.tasks) ? data.tasks : []
+  };
+
+  next.users.forEach((user) => {
+    user.name ||= user.email?.split("@")[0] || "User";
+    user.avatarUrl ||= "";
+    user.theme ||= "light";
+    user.about ||= "";
+    user.createdAt ||= new Date().toISOString();
+  });
+
+  next.conversations.forEach((conversation) => {
+    conversation.type ||= "direct";
+    conversation.participantIds ||= [];
+    conversation.createdAt ||= new Date().toISOString();
+    conversation.createdBy ||= conversation.participantIds[0] || "";
+    conversation.pinnedMessageId ||= "";
+    if (conversation.type === "group") {
+      conversation.name ||= "Nhom chat";
+      conversation.avatarUrl ||= "";
+    }
+  });
+
+  next.messages.forEach((message) => {
+    message.type ||= "text";
+    message.createdAt ||= new Date().toISOString();
+  });
+
+  next.tasks.forEach((task) => {
+    task.status ||= "open";
+    task.createdAt ||= new Date().toISOString();
+  });
+
+  ensureDemoUser(next, "Demo One", "demo1@gmail.com");
+  ensureDemoUser(next, "Demo Two", "demo2@gmail.com");
+  ensureDemoUser(next, "Demo Three", "demo3@gmail.com");
+  ensureDemoFriendTriangle(next);
+  return next;
+}
+
+function ensureDemoUser(targetDb, name, email) {
+  if (targetDb.users.some((user) => user.email === email)) return;
+  targetDb.users.push(createUser(name, email, "123456"));
+}
+
+function ensureDemoFriendTriangle(targetDb) {
+  const demoUsers = ["demo1@gmail.com", "demo2@gmail.com", "demo3@gmail.com"]
+    .map((email) => targetDb.users.find((user) => user.email === email))
+    .filter(Boolean);
+  if (demoUsers.length < 3) return;
+
+  for (let i = 0; i < demoUsers.length; i += 1) {
+    for (let j = i + 1; j < demoUsers.length; j += 1) {
+      const userA = demoUsers[i];
+      const userB = demoUsers[j];
+      const exists = targetDb.conversations.some(
+        (conversation) =>
+          conversation.type === "direct" &&
+          conversation.participantIds.includes(userA.id) &&
+          conversation.participantIds.includes(userB.id)
+      );
+      if (exists) continue;
+
+      const conversationId = createId("conv");
+      const now = new Date().toISOString();
+      targetDb.conversations.push({
+        id: conversationId,
+        type: "direct",
+        participantIds: [userA.id, userB.id],
+        createdBy: userA.id,
+        pinnedMessageId: "",
+        createdAt: now
+      });
+      targetDb.messages.push({
+        id: createId("msg"),
+        conversationId,
+        senderId: userA.id,
+        text: "Chao ban, day la phong chat realtime demo.",
+        type: "text",
+        createdAt: now
+      });
     }
   }
-
-  return createDb();
 }
 
 function createDb() {
-  const demoA = createUser("Demo One", "demo1@gmail.com", "123456");
-  const demoB = createUser("Demo Two", "demo2@gmail.com", "123456");
-  const conversationId = createId("conv");
-  const now = new Date().toISOString();
-
-  return {
-    users: [demoA, demoB],
+  return normalizeDb({
+    users: [],
     friendRequests: [],
-    conversations: [
-      {
-        id: conversationId,
-        type: "direct",
-        participantIds: [demoA.id, demoB.id],
-        createdAt: now
-      }
-    ],
-    messages: [
-      {
-        id: createId("msg"),
-        conversationId,
-        senderId: demoA.id,
-        text: "Chao ban, day la phong chat realtime demo.",
-        createdAt: now
-      },
-      {
-        id: createId("msg"),
-        conversationId,
-        senderId: demoB.id,
-        text: "Dang nhap bang demo2@gmail.com tren trinh duyet khac de thu chat truc tuyen.",
-        createdAt: new Date(Date.now() + 1000).toISOString()
-      }
-    ]
-  };
+    conversations: [],
+    messages: [],
+    tasks: []
+  });
 }
 
 function saveDb() {
@@ -99,22 +162,16 @@ function createUser(name, email, password) {
     id: createId("user"),
     name,
     email: email.toLowerCase(),
+    avatarUrl: "",
+    theme: "light",
+    about: "",
     passwordHash: hashPassword(password),
     createdAt: new Date().toISOString()
   };
 }
 
-function publicUser(user) {
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    avatar: initials(user.name || user.email)
-  };
-}
-
 function initials(value) {
-  return String(value)
+  return String(value || "")
     .split(/[ .@_-]+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -125,6 +182,85 @@ function initials(value) {
 
 function isGmail(email) {
   return /^[^\s@]+@gmail\.com$/i.test(email);
+}
+
+function publicUser(user) {
+  if (!user) return { id: "", name: "Unknown", email: "", avatar: "?", avatarUrl: "", about: "" };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatar: initials(user.name || user.email),
+    avatarUrl: user.avatarUrl || "",
+    about: user.about || ""
+  };
+}
+
+function privateUser(user) {
+  return {
+    ...publicUser(user),
+    theme: user.theme || "light",
+    friendCount: getFriendsFor(user.id).length
+  };
+}
+
+function publicConversation(conversation, userId) {
+  const messages = db.messages
+    .filter((message) => message.conversationId === conversation.id)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const lastMessage = messages[messages.length - 1] || null;
+  const pinnedMessage = conversation.pinnedMessageId
+    ? db.messages.find((message) => message.id === conversation.pinnedMessageId)
+    : null;
+  const tasks = db.tasks.filter((task) => task.conversationId === conversation.id);
+
+  if (conversation.type === "group") {
+    const members = conversation.participantIds
+      .map((id) => db.users.find((user) => user.id === id))
+      .filter(Boolean)
+      .map(publicUser);
+    return {
+      id: conversation.id,
+      type: "group",
+      name: conversation.name,
+      peer: {
+        id: conversation.id,
+        name: conversation.name,
+        email: `${members.length} thanh vien`,
+        avatar: initials(conversation.name),
+        avatarUrl: conversation.avatarUrl || ""
+      },
+      members,
+      lastMessage,
+      pinnedMessage,
+      taskSummary: {
+        total: tasks.length,
+        open: tasks.filter((task) => task.status !== "done").length
+      },
+      updatedAt: lastMessage?.createdAt || conversation.createdAt,
+      messageCount: messages.length
+    };
+  }
+
+  const otherId = conversation.participantIds.find((id) => id !== userId);
+  const other = db.users.find((user) => user.id === otherId) || db.users.find((user) => user.id === userId);
+  return {
+    id: conversation.id,
+    type: "direct",
+    peer: publicUser(other),
+    members: conversation.participantIds
+      .map((id) => db.users.find((user) => user.id === id))
+      .filter(Boolean)
+      .map(publicUser),
+    lastMessage,
+    pinnedMessage,
+    taskSummary: {
+      total: tasks.length,
+      open: tasks.filter((task) => task.status !== "done").length
+    },
+    updatedAt: lastMessage?.createdAt || conversation.createdAt,
+    messageCount: messages.length
+  };
 }
 
 function findUserByEmail(email) {
@@ -160,10 +296,7 @@ function readJson(req) {
       }
     });
     req.on("end", () => {
-      if (!raw) {
-        resolve({});
-        return;
-      }
+      if (!raw) return resolve({});
       try {
         resolve(JSON.parse(raw));
       } catch {
@@ -182,11 +315,22 @@ function requireAuth(req, res) {
   return session;
 }
 
+function findDirectConversation(userA, userB) {
+  return db.conversations.find(
+    (conversation) =>
+      conversation.type === "direct" &&
+      conversation.participantIds.includes(userA) &&
+      conversation.participantIds.includes(userB)
+  );
+}
+
+function areFriends(userA, userB) {
+  return Boolean(findDirectConversation(userA, userB));
+}
+
 function friendStatus(currentUserId, targetUserId) {
   if (currentUserId === targetUserId) return "self";
-
-  const conversation = findDirectConversation(currentUserId, targetUserId);
-  if (conversation) return "friend";
+  if (areFriends(currentUserId, targetUserId)) return "friend";
 
   const outgoing = db.friendRequests.find(
     (request) => request.fromUserId === currentUserId && request.toUserId === targetUserId && request.status === "pending"
@@ -201,48 +345,70 @@ function friendStatus(currentUserId, targetUserId) {
   return "none";
 }
 
-function findDirectConversation(userA, userB) {
-  return db.conversations.find(
-    (conversation) =>
-      conversation.type === "direct" &&
-      conversation.participantIds.includes(userA) &&
-      conversation.participantIds.includes(userB)
-  );
+function getFriendsFor(userId) {
+  return db.conversations
+    .filter((conversation) => conversation.type === "direct" && conversation.participantIds.includes(userId))
+    .map((conversation) => conversation.participantIds.find((id) => id !== userId))
+    .map((id) => db.users.find((user) => user.id === id))
+    .filter(Boolean)
+    .map((user) => ({
+      ...publicUser(user),
+      conversationId: findDirectConversation(userId, user.id)?.id || ""
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function getConversationsFor(userId) {
   return db.conversations
     .filter((conversation) => conversation.participantIds.includes(userId))
-    .map((conversation) => {
-      const otherId = conversation.participantIds.find((id) => id !== userId);
-      const other = db.users.find((user) => user.id === otherId) || db.users.find((user) => user.id === userId);
-      const messages = db.messages
-        .filter((message) => message.conversationId === conversation.id)
-        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      const lastMessage = messages[messages.length - 1] || null;
-
-      return {
-        id: conversation.id,
-        type: conversation.type,
-        peer: publicUser(other),
-        lastMessage,
-        updatedAt: lastMessage?.createdAt || conversation.createdAt,
-        messageCount: messages.length
-      };
-    })
+    .map((conversation) => publicConversation(conversation, userId))
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
 function getMessagesFor(userId, conversationId) {
   const conversation = db.conversations.find((item) => item.id === conversationId);
   if (!conversation || !conversation.participantIds.includes(userId)) return null;
+
   return db.messages
     .filter((message) => message.conversationId === conversationId)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .map((message) => ({
       ...message,
+      isPinned: conversation.pinnedMessageId === message.id,
       sender: publicUser(db.users.find((user) => user.id === message.senderId))
     }));
+}
+
+function getTasksForConversation(userId, conversationId) {
+  const conversation = db.conversations.find((item) => item.id === conversationId);
+  if (!conversation || !conversation.participantIds.includes(userId)) return null;
+
+  return db.tasks
+    .filter((task) => task.conversationId === conversationId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(publicTask);
+}
+
+function getTasksForUser(userId) {
+  const visibleConversationIds = new Set(
+    db.conversations.filter((conversation) => conversation.participantIds.includes(userId)).map((conversation) => conversation.id)
+  );
+  return db.tasks
+    .filter((task) => visibleConversationIds.has(task.conversationId))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(publicTask);
+}
+
+function publicTask(task) {
+  const conversation = db.conversations.find((item) => item.id === task.conversationId);
+  const assignee = db.users.find((user) => user.id === task.assigneeId);
+  const creator = db.users.find((user) => user.id === task.createdBy);
+  return {
+    ...task,
+    conversationName: conversation?.type === "group" ? conversation.name : "Tin nhan rieng",
+    assignee: publicUser(assignee),
+    creator: publicUser(creator)
+  };
 }
 
 function getRequestsFor(userId) {
@@ -257,7 +423,7 @@ function getRequestsFor(userId) {
 }
 
 function pushEvent(userIds, eventName, payload = {}) {
-  const uniqueIds = [...new Set(userIds)];
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
   uniqueIds.forEach((userId) => {
     const clients = eventClients.get(userId) || new Set();
     clients.forEach((res) => {
@@ -265,6 +431,31 @@ function pushEvent(userIds, eventName, payload = {}) {
       res.write(`data: ${JSON.stringify(payload)}\n\n`);
     });
   });
+}
+
+function pushConversationRefresh(conversation, reason) {
+  pushEvent(conversation.participantIds, "refresh", { reason, conversationId: conversation.id });
+}
+
+function canSeeProfile(viewerId, targetId) {
+  if (viewerId === targetId) return true;
+  if (areFriends(viewerId, targetId)) return true;
+  return db.conversations.some(
+    (conversation) =>
+      conversation.type === "group" &&
+      conversation.participantIds.includes(viewerId) &&
+      conversation.participantIds.includes(targetId)
+  );
+}
+
+function validateAvatarUrl(value) {
+  const avatarUrl = String(value || "").trim();
+  if (!avatarUrl) return "";
+  if (avatarUrl.length > 800) throw new Error("Link anh dai dien qua dai.");
+  if (!/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("data:image/")) {
+    throw new Error("Anh dai dien can la URL http/https hoac data image.");
+  }
+  return avatarUrl;
 }
 
 async function handleApi(req, res, url) {
@@ -285,7 +476,7 @@ async function handleApi(req, res, url) {
       saveDb();
       const token = createId("session");
       sessions.set(token, user.id);
-      return sendJson(res, 201, { token, user: publicUser(user) });
+      return sendJson(res, 201, { token, user: privateUser(user) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/login") {
@@ -299,16 +490,90 @@ async function handleApi(req, res, url) {
 
       const token = createId("session");
       sessions.set(token, user.id);
-      return sendJson(res, 200, { token, user: publicUser(user) });
+      return sendJson(res, 200, { token, user: privateUser(user) });
     }
 
     if (req.method === "GET" && url.pathname === "/api/me") {
       const session = requireAuth(req, res);
       if (!session) return;
       return sendJson(res, 200, {
-        user: publicUser(session.user),
+        user: privateUser(session.user),
         conversations: getConversationsFor(session.user.id),
-        requests: getRequestsFor(session.user.id)
+        requests: getRequestsFor(session.user.id),
+        friends: getFriendsFor(session.user.id),
+        tasks: getTasksForUser(session.user.id)
+      });
+    }
+
+    if (req.method === "PATCH" && url.pathname === "/api/me") {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const body = await readJson(req);
+      const name = String(body.name ?? session.user.name).trim();
+      if (!name) return sendJson(res, 400, { error: "Ten hien thi khong duoc rong." });
+
+      let avatarUrl = session.user.avatarUrl || "";
+      try {
+        avatarUrl = validateAvatarUrl(body.avatarUrl ?? session.user.avatarUrl);
+      } catch (error) {
+        return sendJson(res, 400, { error: error.message });
+      }
+
+      const theme = ["light", "dark", "system"].includes(body.theme) ? body.theme : session.user.theme || "light";
+      session.user.name = name.slice(0, 80);
+      session.user.about = String(body.about ?? session.user.about ?? "").trim().slice(0, 160);
+      session.user.avatarUrl = avatarUrl;
+      session.user.theme = theme;
+      saveDb();
+
+      const relatedUserIds = db.conversations
+        .filter((conversation) => conversation.participantIds.includes(session.user.id))
+        .flatMap((conversation) => conversation.participantIds);
+      pushEvent(relatedUserIds, "refresh", { reason: "profile-updated" });
+      return sendJson(res, 200, { user: privateUser(session.user) });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/friends") {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      return sendJson(res, 200, { friends: getFriendsFor(session.user.id) });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/friends/")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const targetId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const direct = findDirectConversation(session.user.id, targetId);
+      if (!direct) return sendJson(res, 404, { error: "Hai tai khoan chua ket ban." });
+
+      db.conversations = db.conversations.filter((conversation) => conversation.id !== direct.id);
+      db.messages = db.messages.filter((message) => message.conversationId !== direct.id);
+      db.tasks = db.tasks.filter((task) => task.conversationId !== direct.id);
+      saveDb();
+      pushEvent(direct.participantIds, "refresh", { reason: "unfriended" });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/users/") && url.pathname.endsWith("/profile")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const userId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const user = db.users.find((candidate) => candidate.id === userId);
+      if (!user || !canSeeProfile(session.user.id, user.id)) {
+        return sendJson(res, 404, { error: "Khong xem duoc ho so nay." });
+      }
+      return sendJson(res, 200, {
+        profile: {
+          ...publicUser(user),
+          friendStatus: friendStatus(session.user.id, user.id),
+          friendCount: getFriendsFor(user.id).length,
+          groupsInCommon: db.conversations.filter(
+            (conversation) =>
+              conversation.type === "group" &&
+              conversation.participantIds.includes(session.user.id) &&
+              conversation.participantIds.includes(user.id)
+          ).length
+        }
       });
     }
 
@@ -338,14 +603,12 @@ async function handleApi(req, res, url) {
 
       if (!target) return sendJson(res, 404, { error: "Khong tim thay tai khoan Gmail nay." });
       if (target.id === session.user.id) return sendJson(res, 400, { error: "Khong the ket ban voi chinh minh." });
-      if (findDirectConversation(session.user.id, target.id)) return sendJson(res, 409, { error: "Hai tai khoan da la ban be." });
+      if (areFriends(session.user.id, target.id)) return sendJson(res, 409, { error: "Hai tai khoan da la ban be." });
 
       const incoming = db.friendRequests.find(
         (request) => request.fromUserId === target.id && request.toUserId === session.user.id && request.status === "pending"
       );
-      if (incoming) {
-        return acceptRequest(session.user, incoming, res);
-      }
+      if (incoming) return acceptRequest(session.user, incoming, res);
 
       const existing = db.friendRequests.find(
         (request) => request.fromUserId === session.user.id && request.toUserId === target.id && request.status === "pending"
@@ -376,13 +639,68 @@ async function handleApi(req, res, url) {
       return acceptRequest(session.user, request, res);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/groups") {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const body = await readJson(req);
+      const name = String(body.name || "").trim().slice(0, 80);
+      const memberIds = [...new Set(Array.isArray(body.memberIds) ? body.memberIds.map(String) : [])].filter(
+        (id) => id !== session.user.id
+      );
+      const participantIds = [session.user.id, ...memberIds];
+
+      if (!name) return sendJson(res, 400, { error: "Vui long dat ten nhom." });
+      if (participantIds.length < 3) return sendJson(res, 400, { error: "Nhom can it nhat 3 nguoi." });
+      if (participantIds.some((id) => !db.users.some((user) => user.id === id))) {
+        return sendJson(res, 400, { error: "Thanh vien khong hop le." });
+      }
+      for (let i = 0; i < participantIds.length; i += 1) {
+        for (let j = i + 1; j < participantIds.length; j += 1) {
+          if (!areFriends(participantIds[i], participantIds[j])) {
+            return sendJson(res, 400, { error: "Tat ca thanh vien can ket ban voi nhau truoc khi tao nhom." });
+          }
+        }
+      }
+
+      let avatarUrl = "";
+      try {
+        avatarUrl = validateAvatarUrl(body.avatarUrl || "");
+      } catch (error) {
+        return sendJson(res, 400, { error: error.message });
+      }
+
+      const conversation = {
+        id: createId("conv"),
+        type: "group",
+        name,
+        avatarUrl,
+        participantIds,
+        createdBy: session.user.id,
+        pinnedMessageId: "",
+        createdAt: new Date().toISOString()
+      };
+      db.conversations.push(conversation);
+      db.messages.push({
+        id: createId("msg"),
+        conversationId: conversation.id,
+        senderId: session.user.id,
+        text: `Da tao nhom ${name}.`,
+        type: "system",
+        createdAt: new Date().toISOString()
+      });
+      saveDb();
+      pushConversationRefresh(conversation, "group-created");
+      return sendJson(res, 201, { conversation: publicConversation(conversation, session.user.id) });
+    }
+
     if (req.method === "GET" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/messages")) {
       const session = requireAuth(req, res);
       if (!session) return;
       const conversationId = url.pathname.split("/")[3];
       const messages = getMessagesFor(session.user.id, conversationId);
       if (!messages) return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
-      return sendJson(res, 200, { messages });
+      const tasks = getTasksForConversation(session.user.id, conversationId) || [];
+      return sendJson(res, 200, { messages, tasks });
     }
 
     if (req.method === "POST" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/messages")) {
@@ -404,12 +722,123 @@ async function handleApi(req, res, url) {
         conversationId,
         senderId: session.user.id,
         text,
+        type: "text",
         createdAt: new Date().toISOString()
       };
       db.messages.push(message);
       saveDb();
-      pushEvent(conversation.participantIds, "refresh", { reason: "message", conversationId });
+      pushConversationRefresh(conversation, "message");
       return sendJson(res, 201, { message: { ...message, sender: publicUser(session.user) } });
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/pin")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const conversationId = url.pathname.split("/")[3];
+      const conversation = db.conversations.find((item) => item.id === conversationId);
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      }
+
+      const body = await readJson(req);
+      const messageId = String(body.messageId || "");
+      const message = db.messages.find((item) => item.id === messageId && item.conversationId === conversation.id);
+      if (!message) return sendJson(res, 404, { error: "Khong tim thay tin nhan de ghim." });
+
+      conversation.pinnedMessageId = message.id;
+      saveDb();
+      pushConversationRefresh(conversation, "message-pinned");
+      return sendJson(res, 200, { conversation: publicConversation(conversation, session.user.id) });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/pin")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const conversationId = url.pathname.split("/")[3];
+      const conversation = db.conversations.find((item) => item.id === conversationId);
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      }
+      conversation.pinnedMessageId = "";
+      saveDb();
+      pushConversationRefresh(conversation, "message-unpinned");
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/tasks")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const conversationId = url.pathname.split("/")[3];
+      const tasks = getTasksForConversation(session.user.id, conversationId);
+      if (!tasks) return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      return sendJson(res, 200, { tasks });
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/tasks")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const conversationId = url.pathname.split("/")[3];
+      const conversation = db.conversations.find((item) => item.id === conversationId);
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
+      }
+
+      const body = await readJson(req);
+      const title = String(body.title || "").trim().slice(0, 140);
+      const description = String(body.description || "").trim().slice(0, 500);
+      const assigneeId = String(body.assigneeId || "");
+      if (!title) return sendJson(res, 400, { error: "Vui long nhap ten viec." });
+      if (!conversation.participantIds.includes(assigneeId)) {
+        return sendJson(res, 400, { error: "Nguoi duoc giao viec phai nam trong cuoc tro chuyen." });
+      }
+
+      const task = {
+        id: createId("task"),
+        conversationId,
+        title,
+        description,
+        assigneeId,
+        createdBy: session.user.id,
+        status: "open",
+        createdAt: new Date().toISOString()
+      };
+      db.tasks.push(task);
+      db.messages.push({
+        id: createId("msg"),
+        conversationId,
+        senderId: session.user.id,
+        text: `Da giao viec: ${title}`,
+        type: "task",
+        createdAt: new Date().toISOString()
+      });
+      saveDb();
+      pushConversationRefresh(conversation, "task-created");
+      return sendJson(res, 201, { task: publicTask(task) });
+    }
+
+    if (req.method === "PATCH" && url.pathname.startsWith("/api/tasks/")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const taskId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const task = db.tasks.find((candidate) => candidate.id === taskId);
+      const conversation = task ? db.conversations.find((item) => item.id === task.conversationId) : null;
+      if (!task || !conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Khong tim thay viec." });
+      }
+
+      const body = await readJson(req);
+      if (typeof body.status === "string" && ["open", "done"].includes(body.status)) {
+        task.status = body.status;
+        task.completedAt = body.status === "done" ? new Date().toISOString() : "";
+      }
+      if (typeof body.title === "string" && body.title.trim()) task.title = body.title.trim().slice(0, 140);
+      if (typeof body.description === "string") task.description = body.description.trim().slice(0, 500);
+      if (typeof body.assigneeId === "string" && conversation.participantIds.includes(body.assigneeId)) {
+        task.assigneeId = body.assigneeId;
+      }
+      saveDb();
+      pushConversationRefresh(conversation, "task-updated");
+      return sendJson(res, 200, { task: publicTask(task) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/calls/signal") {
@@ -419,22 +848,27 @@ async function handleApi(req, res, url) {
       const conversationId = String(body.conversationId || "");
       const type = String(body.type || "");
       const callId = String(body.callId || "");
+      const targetUserId = String(body.targetUserId || "");
       const conversation = db.conversations.find((item) => item.id === conversationId);
 
       if (!conversation || !conversation.participantIds.includes(session.user.id)) {
         return sendJson(res, 404, { error: "Khong tim thay cuoc tro chuyen." });
       }
 
-      const allowedTypes = new Set(["offer", "answer", "candidate", "hangup", "reject", "busy"]);
+      const allowedTypes = new Set(["offer", "answer", "candidate", "hangup", "reject", "busy", "join"]);
       if (!allowedTypes.has(type) || !callId) {
         return sendJson(res, 400, { error: "Tin hieu cuoc goi khong hop le." });
       }
 
-      const recipients = conversation.participantIds.filter((userId) => userId !== session.user.id);
+      const recipients =
+        targetUserId && conversation.participantIds.includes(targetUserId)
+          ? [targetUserId]
+          : conversation.participantIds.filter((userId) => userId !== session.user.id);
       pushEvent(recipients, "call-signal", {
         conversationId,
         callId,
         type,
+        targetUserId,
         payload: body.payload || {},
         from: publicUser(session.user)
       });
@@ -454,9 +888,7 @@ async function handleApi(req, res, url) {
       res.write("event: ready\n");
       res.write(`data: ${JSON.stringify({ userId: session.user.id })}\n\n`);
 
-      if (!eventClients.has(session.user.id)) {
-        eventClients.set(session.user.id, new Set());
-      }
+      if (!eventClients.has(session.user.id)) eventClients.set(session.user.id, new Set());
       eventClients.get(session.user.id).add(res);
 
       req.on("close", () => {
@@ -486,6 +918,8 @@ function acceptRequest(currentUser, request, res) {
       id: createId("conv"),
       type: "direct",
       participantIds: [request.fromUserId, request.toUserId],
+      createdBy: currentUser.id,
+      pinnedMessageId: "",
       createdAt: new Date().toISOString()
     };
 
@@ -496,13 +930,14 @@ function acceptRequest(currentUser, request, res) {
       conversationId: conversation.id,
       senderId: currentUser.id,
       text: "Chung ta da ket ban. Bat dau tro chuyen nhe!",
+      type: "system",
       createdAt: new Date().toISOString()
     });
   }
 
   saveDb();
-  pushEvent(conversation.participantIds, "refresh", { reason: "friend-accepted", conversationId: conversation.id });
-  return sendJson(res, 200, { conversation });
+  pushConversationRefresh(conversation, "friend-accepted");
+  return sendJson(res, 200, { conversation: publicConversation(conversation, currentUser.id) });
 }
 
 function serveStatic(req, res, url) {
@@ -531,12 +966,10 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-
   if (url.pathname.startsWith("/api/")) {
     handleApi(req, res, url);
     return;
   }
-
   serveStatic(req, res, url);
 });
 
