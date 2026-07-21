@@ -698,6 +698,7 @@ function renderFriendAction(user) {
 function renderChat(active) {
   return `
     <header class="chat-header">
+      <button class="mobile-back-btn" id="mobileBackBtn" title="Quay lại danh sách" type="button">‹</button>
       <div class="person" data-profile="${active.type === "direct" ? escapeAttr(active.peer.id) : ""}">
         ${renderAvatar(active.peer)}
         <div>
@@ -1145,6 +1146,11 @@ function bindAppEvents() {
   $("#newTaskFromPanelBtn")?.addEventListener("click", openTaskModal);
   $("#settingsBtn")?.addEventListener("click", () => {
     modal = "settings";
+    renderApp();
+  });
+  $("#mobileBackBtn")?.addEventListener("click", () => {
+    activeTab = "messages";
+    mobileListOpen = true;
     renderApp();
   });
   $("#unpinBtn")?.addEventListener("click", unpinMessage);

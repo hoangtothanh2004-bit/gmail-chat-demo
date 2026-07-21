@@ -563,6 +563,10 @@ button {
   gap: 12px;
 }
 
+.person > div {
+  min-width: 0;
+}
+
 .person strong,
 .person span {
   display: block;
@@ -618,6 +622,10 @@ button {
 
 .mobile-only {
   display: none !important;
+}
+
+.mobile-back-btn {
+  display: none;
 }
 
 .messages {
@@ -1523,25 +1531,30 @@ body[data-theme="dark"] .muted-btn.danger-text {
   .app-shell {
     height: 100dvh;
     min-height: 0;
-    grid-template-columns: 126px minmax(0, 1fr);
+    grid-template-columns: 92px minmax(0, 1fr);
     grid-template-rows: 1fr;
+  }
+
+  .app-shell.tab-messages:not(.mobile-list-open) {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .rail {
     grid-column: 1;
     grid-row: 1;
     height: 100dvh;
-    padding: max(18px, env(safe-area-inset-top)) 10px max(16px, env(safe-area-inset-bottom));
+    padding: max(14px, env(safe-area-inset-top)) 7px max(12px, env(safe-area-inset-bottom));
     flex-direction: column;
-    gap: 12px;
+    gap: 9px;
     overflow-y: auto;
   }
 
   .rail .avatar {
     display: grid;
-    width: 58px;
-    height: 58px;
-    margin-bottom: 6px;
+    width: 46px;
+    height: 46px;
+    margin-bottom: 5px;
+    font-size: 15px;
   }
 
   .rail-spacer {
@@ -1567,12 +1580,18 @@ body[data-theme="dark"] .muted-btn.danger-text {
     display: none;
   }
 
+  .app-shell.tab-messages:not(.mobile-list-open) .rail,
+  .app-shell.tab-messages:not(.mobile-list-open) .sidebar {
+    display: none;
+  }
+
   .rail .icon-btn {
     min-width: 0;
     flex: 0 0 auto;
-    min-height: 58px;
-    padding: 0 8px;
-    font-size: 13px;
+    min-height: 48px;
+    padding: 0 5px;
+    border-radius: 11px;
+    font-size: 11px;
   }
 
   .chat {
@@ -1581,26 +1600,46 @@ body[data-theme="dark"] .muted-btn.danger-text {
     min-height: 100dvh;
   }
 
+  .app-shell.tab-messages:not(.mobile-list-open) .chat {
+    grid-column: 1;
+  }
+
   .chat-header {
-    min-height: 78px;
+    min-height: 72px;
     padding: 10px 12px;
     align-items: center;
   }
 
   .person {
     align-items: center;
+    flex: 1;
+    min-width: 0;
   }
 
   .person .avatar {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
   }
 
   .person span {
-    max-width: 160px;
+    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .mobile-back-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    color: var(--blue);
+    background: #edf4ff;
+    font-size: 28px;
+    line-height: 1;
+    font-weight: 700;
   }
 
   .header-actions {
@@ -1626,7 +1665,7 @@ body[data-theme="dark"] .muted-btn.danger-text {
   }
 
   .messages {
-    padding: 18px 12px;
+    padding: 16px 12px;
   }
 
   .bubble {
@@ -1689,7 +1728,12 @@ body[data-theme="dark"] .muted-btn.danger-text {
     height: 100dvh;
     border-radius: 0;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .call-topbar {
+    min-height: 56px;
+    padding: 10px 12px;
   }
 
   .call-panel.compact {
@@ -1698,51 +1742,103 @@ body[data-theme="dark"] .muted-btn.danger-text {
     border-radius: 14px;
   }
 
-  .video-grid,
+  .video-grid {
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+  }
+
   .remote-video-grid,
   .video-frame.remote {
     min-height: 0;
     height: 100%;
   }
 
+  .video-placeholder {
+    padding: 18px;
+  }
+
   .video-frame.local {
-    width: 118px;
-    right: 10px;
-    bottom: 10px;
+    width: min(124px, 38vw);
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .video-grid.audio-mode {
+    height: auto;
+    min-height: 0;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    overflow: auto;
+  }
+
+  .video-grid.audio-mode .remote-video-grid {
+    height: auto;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .audio-frame {
+    min-height: 158px;
+    padding: 18px;
   }
 
   .audio-self {
-    right: 10px;
-    bottom: 10px;
+    position: static;
+    width: 100%;
     min-width: 128px;
+    min-height: 68px;
+    grid-template-columns: 44px 1fr;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .audio-self .avatar {
+    width: 42px;
+    height: 42px;
+  }
+
+  .audio-self span {
+    margin: 0;
   }
 
   .call-actions {
     flex-wrap: wrap;
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .call-btn {
+    min-width: 88px;
+    min-height: 40px;
+    border-radius: 12px;
   }
 }
 
 @media (max-width: 520px) {
   .app-shell {
-    grid-template-columns: 108px minmax(0, 1fr);
+    grid-template-columns: 82px minmax(0, 1fr);
   }
 
   .rail {
-    padding-left: 8px;
-    padding-right: 8px;
-    gap: 10px;
+    padding-left: 6px;
+    padding-right: 6px;
+    gap: 8px;
   }
 
   .rail .avatar {
-    width: 54px;
-    height: 54px;
+    width: 42px;
+    height: 42px;
+    font-size: 14px;
   }
 
   .rail .icon-btn {
-    min-height: 56px;
-    padding: 0 6px;
-    border-radius: 13px;
-    font-size: 12px;
+    min-height: 46px;
+    padding: 0 4px;
+    border-radius: 10px;
+    font-size: 10px;
   }
 
   .search-zone {
@@ -1759,7 +1855,8 @@ body[data-theme="dark"] .muted-btn.danger-text {
   }
 
   .chat-header {
-    align-items: flex-start;
+    align-items: center;
+    gap: 8px;
   }
 
   .person {
@@ -1767,15 +1864,25 @@ body[data-theme="dark"] .muted-btn.danger-text {
   }
 
   .person strong {
-    max-width: 130px;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .person span {
-    max-width: 130px;
+    max-width: 100%;
     font-size: 12px;
+  }
+
+  .header-actions {
+    width: 86px;
+  }
+
+  .header-actions button {
+    height: 31px;
+    padding: 0 6px;
+    font-size: 10px;
   }
 
   .messages {

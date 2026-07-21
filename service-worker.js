@@ -1,9 +1,9 @@
-const CACHE_NAME = "gmail-chat-demo-v20260721-call-ui";
+const CACHE_NAME = "gmail-chat-demo-v20260721-compact-mobile-call";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20260721-call-ui",
-  "/app.js?v=20260721-call-ui",
+  "/styles.css?v=20260721-compact-mobile-call",
+  "/app.js?v=20260721-compact-mobile-call",
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/icon-192.png",
