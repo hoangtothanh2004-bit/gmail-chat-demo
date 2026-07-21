@@ -212,6 +212,10 @@ function isStandaloneApp() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
 }
 
+function isMobileLayout() {
+  return window.matchMedia("(max-width: 820px)").matches;
+}
+
 function applyTheme() {
   const theme = currentUser?.theme || localStorage.getItem("gmail-chat-theme") || "light";
   const resolved = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
@@ -226,6 +230,7 @@ async function boot() {
 
   try {
     await refreshData();
+    mobileListOpen = isMobileLayout();
     connectEvents();
     renderApp();
   } catch {
@@ -400,6 +405,7 @@ async function handleAuth(event) {
     token = data.token;
     localStorage.setItem(tokenKey, token);
     await refreshData();
+    if (isMobileLayout()) mobileListOpen = true;
     connectEvents();
     renderApp();
   } catch (err) {
@@ -458,10 +464,10 @@ function renderApp() {
     <main class="app-shell tab-${escapeAttr(activeTab)} ${mobileListOpen ? "mobile-list-open" : ""}">
       <nav class="rail" aria-label="Điều hướng">
         ${renderAvatar(currentUser)}
-        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn">Tin nhắn</button>
-        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Danh bạ">Danh bạ</button>
-        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm">Nhóm</button>
-        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc">Công việc</button>
+        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn" aria-current="${activeTab === "messages" ? "page" : "false"}">Tin nhắn</button>
+        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Danh bạ" aria-current="${activeTab === "friends" ? "page" : "false"}">Danh bạ</button>
+        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm" aria-current="${activeTab === "groups" ? "page" : "false"}">Nhóm</button>
+        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc" aria-current="${activeTab === "tasks" ? "page" : "false"}">Công việc</button>
         <div class="rail-spacer"></div>
         <button class="icon-btn" id="settingsBtn" title="Cá nhân">Cá nhân</button>
       </nav>
@@ -476,15 +482,6 @@ function renderApp() {
             <button class="small-btn" id="searchBtn">Tìm Gmail</button>
             <button class="small-btn" id="newGroupBtn">Tạo nhóm</button>
           </div>
-        </div>
-
-        <div class="section-tabs wide">
-          ${renderTab("messages", "Tin nhắn")}
-          ${renderTab("search", "Tìm bạn")}
-          ${renderTab("friends", `Bạn bè ${friends.length}`)}
-          ${renderTab("groups", "Nhóm")}
-          ${renderTab("tasks", "Công việc")}
-          ${renderTab("requests", `Lời mời ${requests.length ? `(${requests.length})` : ""}`)}
         </div>
 
         <div class="conversation-list">
@@ -526,18 +523,61 @@ function friendStatusLabel(status) {
 
 function renderSidebarList() {
   if (activeTab === "search") return renderSearchResults();
-  if (activeTab === "friends") return renderFriendsList();
+  if (activeTab === "friends") return renderContactsPanel();
   if (activeTab === "groups") return renderGroupsList();
-  if (activeTab === "tasks") return renderTasksList(tasks, true);
-  if (activeTab === "requests") return renderRequestsList();
+  if (activeTab === "tasks") return renderTasksPanel();
   return renderConversationList();
+}
+
+function renderContactsPanel() {
+  const requestSection = requests.length
+    ? `
+      <div class="panel-section">
+        <div class="panel-heading">
+          <strong>Lời mời kết bạn</strong>
+          <span>${requests.length}</span>
+        </div>
+        ${renderRequestsList()}
+      </div>
+    `
+    : "";
+
+  return `
+    ${requestSection}
+    <div class="panel-section">
+      <div class="panel-heading">
+        <strong>Danh bạ bạn bè</strong>
+        <span>${friends.length}</span>
+      </div>
+      ${renderFriendsList()}
+    </div>
+  `;
+}
+
+function renderTasksPanel() {
+  const active = getActiveConversation();
+  return `
+    <div class="panel-toolbar">
+      <div>
+        <strong>Công việc</strong>
+        <span>${active ? `Giao trong ${active.peer.name}` : "Chọn cuộc trò chuyện để giao việc"}</span>
+      </div>
+      <button class="small-btn" id="newTaskFromPanelBtn" ${active ? "" : "disabled"}>Giao việc mới</button>
+    </div>
+    ${renderTasksList(tasks, true)}
+  `;
 }
 
 function renderSearchResults() {
   if (!searchResults.length) {
     return `<div class="empty-state">Nhập Gmail rồi bấm Tìm Gmail để gửi lời mời kết bạn.</div>`;
   }
-  return searchResults
+  return `
+    <div class="panel-heading standalone">
+      <strong>Kết quả tìm kiếm</strong>
+      <span>${searchResults.length}</span>
+    </div>
+    ${searchResults
     .map(
       (user) => `
         <div class="contact-row padded">
@@ -550,7 +590,8 @@ function renderSearchResults() {
         </div>
       `
     )
-    .join("");
+    .join("")}
+  `;
 }
 
 function renderFriendsList() {
@@ -665,9 +706,8 @@ function renderChat(active) {
         </div>
       </div>
       <div class="header-actions">
-        <button class="mobile-only" title="Mở danh sách" id="mobileListBtn">Danh sách</button>
-        <button title="${active.type === "group" ? "Gọi nhóm" : "Gọi video"}" id="videoCallBtn">${active.type === "group" ? "Gọi nhóm" : "Gọi video"}</button>
-        <button title="Giao việc" id="newTaskBtn">Giao việc</button>
+        <button title="${active.type === "group" ? "Gọi thoại nhóm" : "Gọi thoại"}" id="audioCallBtn">Gọi thoại</button>
+        <button title="${active.type === "group" ? "Gọi video nhóm" : "Gọi video"}" id="videoCallBtn">Gọi video</button>
       </div>
     </header>
 
@@ -782,7 +822,7 @@ function renderEmptyChat() {
   return `
     <div class="empty-chat">
       <h2>Bắt đầu bằng Gmail</h2>
-      <p>Kết bạn, tạo nhóm 3 người, giao việc, ghim tin nhắn và gọi video.</p>
+      <p>Kết bạn, tạo nhóm 3 người, giao việc, ghim tin nhắn, gọi thoại và gọi video.</p>
     </div>
   `;
 }
@@ -945,8 +985,23 @@ function getCallPeers() {
   return Object.values(callState.peers);
 }
 
+function getCallModeText(mode = "video") {
+  return mode === "audio" ? "Cuộc gọi thoại" : "Cuộc gọi video";
+}
+
 function renderRemoteFrame(peer, index) {
   const user = peer.user || {};
+  if (callState?.mode === "audio") {
+    return `
+      <div class="audio-frame">
+        <audio data-remote-audio="${escapeAttr(user.id || index)}" autoplay></audio>
+        <div class="call-avatar">${escapeHtml(user.avatar || initials(user.name || user.email || "?") || "?")}</div>
+        <strong>${escapeHtml(user.name || "Thành viên")}</strong>
+        <p>${escapeHtml(peer.status || "Đang kết nối âm thanh...")}</p>
+      </div>
+    `;
+  }
+
   return `
     <div class="video-frame remote">
       <video data-remote-video="${escapeAttr(user.id || index)}" autoplay playsinline></video>
@@ -961,11 +1016,13 @@ function renderRemoteFrame(peer, index) {
 
 function renderCallLayer() {
   if (incomingCall) {
+    const modeText = getCallModeText(incomingCall.mode);
+    const title = incomingCall.isGroup ? `${modeText} nhóm đến` : `${modeText} đến`;
     return `
       <div class="call-layer">
         <section class="call-panel compact">
           <div class="call-avatar">${escapeHtml(incomingCall.from.avatar)}</div>
-          <h2>${incomingCall.isGroup ? "Cuộc gọi nhóm đến" : "Cuộc gọi video đến"}</h2>
+          <h2>${escapeHtml(title)}</h2>
           <p>${escapeHtml(incomingCall.from.name)} đang gọi ${incomingCall.isGroup ? `trong ${incomingCall.conversationName}` : "cho bạn"}.</p>
           <div class="call-actions">
             <button class="call-btn danger" id="rejectCallBtn">Từ chối</button>
@@ -977,41 +1034,56 @@ function renderCallLayer() {
   }
   if (!callState) return "";
   const peers = getCallPeers();
+  const isAudioCall = callState.mode === "audio";
+  const emptyText = isAudioCall ? "Đang chờ người nghe máy..." : "Đang chờ thành viên tham gia...";
 
   return `
     <div class="call-layer">
-      <section class="call-panel">
+      <section class="call-panel ${isAudioCall ? "audio-call" : ""}">
         <header class="call-topbar">
           <div>
-            <strong>${escapeHtml(callState.title || "Cuộc gọi video")}</strong>
+            <strong>${escapeHtml(callState.title || getCallModeText(callState.mode))}</strong>
             <span>${escapeHtml(callState.status || "Đang kết nối...")}</span>
           </div>
           <button class="call-icon-btn" id="minimizeCallBtn" title="Thu nhỏ">-</button>
         </header>
-        <div class="video-grid ${peers.length > 1 ? "multi" : ""}">
+        <div class="video-grid ${peers.length > 1 ? "multi" : ""} ${isAudioCall ? "audio-mode" : ""}">
           <div class="remote-video-grid">
             ${peers.length ? peers.map(renderRemoteFrame).join("") : `
               <div class="video-frame remote">
                 <div class="video-placeholder">
                   <div class="call-avatar">?</div>
-                  <p>Đang chờ thành viên tham gia...</p>
+                  <p>${emptyText}</p>
                 </div>
               </div>
             `}
           </div>
-          <div class="video-frame local">
-            <video id="localVideo" autoplay playsinline muted></video>
-            <span>Bạn</span>
-          </div>
+          ${isAudioCall ? `
+            <div class="audio-self">
+              ${renderAvatar(currentUser)}
+              <span>Bạn đang dùng micro</span>
+            </div>
+          ` : `
+            <div class="video-frame local">
+              <video id="localVideo" autoplay playsinline muted></video>
+              <span>Bạn</span>
+            </div>
+          `}
         </div>
         <div class="call-actions">
           <button class="call-btn" id="toggleMicBtn">${callState.micEnabled ? "Tắt mic" : "Bật mic"}</button>
-          <button class="call-btn" id="toggleCameraBtn">${callState.cameraEnabled ? "Tắt camera" : "Bật camera"}</button>
+          ${isAudioCall ? "" : `<button class="call-btn" id="toggleCameraBtn">${callState.cameraEnabled ? "Tắt camera" : "Bật camera"}</button>`}
           <button class="call-btn danger" id="endCallBtn">Kết thúc</button>
         </div>
       </section>
     </div>
   `;
+}
+
+function openTaskModal() {
+  if (!getActiveConversation()) return showToast("Hãy chọn một cuộc trò chuyện trước khi giao việc.");
+  modal = "task";
+  renderApp();
 }
 
 function bindAppEvents() {
@@ -1070,19 +1142,13 @@ function bindAppEvents() {
     modal = "group";
     renderApp();
   });
-  $("#newTaskBtn")?.addEventListener("click", () => {
-    modal = "task";
-    renderApp();
-  });
+  $("#newTaskFromPanelBtn")?.addEventListener("click", openTaskModal);
   $("#settingsBtn")?.addEventListener("click", () => {
     modal = "settings";
     renderApp();
   });
-  $("#mobileListBtn")?.addEventListener("click", () => {
-    mobileListOpen = true;
-    renderApp();
-  });
   $("#unpinBtn")?.addEventListener("click", unpinMessage);
+  $("#audioCallBtn")?.addEventListener("click", () => startCall("audio"));
   $("#videoCallBtn")?.addEventListener("click", startVideoCall);
   $("#acceptCallBtn")?.addEventListener("click", acceptIncomingCall);
   $("#rejectCallBtn")?.addEventListener("click", rejectIncomingCall);
@@ -1349,7 +1415,7 @@ function createPeerConnection(conversationId, callId, remoteUser) {
   peerConnection.onicecandidate = (event) => {
     if (!event.candidate) return;
     sendCallSignal(conversationId, "candidate", { candidate: event.candidate }, callId, remoteUser.id).catch(() => {
-      showToast("Không gửi được tín hiệu kết nối video.");
+      showToast("Không gửi được tín hiệu kết nối cuộc gọi.");
     });
   };
   peerConnection.ontrack = (event) => {
@@ -1406,18 +1472,19 @@ async function sendOfferToUser(remoteUser) {
   await sendCallSignal(
     callState.conversationId,
     "offer",
-    { description: peer.peerConnection.localDescription },
+    { description: peer.peerConnection.localDescription, mode: callState.mode || "video" },
     callState.callId,
     remoteUser.id
   );
 }
 
-async function startVideoCall() {
+async function startCall(mode = "video") {
+  const isAudioCall = mode === "audio";
   const active = getActiveConversation();
   if (!active) return showToast("Hãy chọn một cuộc trò chuyện để gọi.");
   if (callState || incomingCall) return showToast("Đang có một cuộc gọi khác.");
   if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-    return showToast("Trình duyệt này chưa hỗ trợ video call.");
+    return showToast(`Trình duyệt này chưa hỗ trợ ${isAudioCall ? "gọi thoại" : "gọi video"}.`);
   }
 
   const remoteMembers = (active.members || []).filter((member) => member.id !== currentUser.id);
@@ -1426,19 +1493,22 @@ async function startVideoCall() {
   const callId = makeCallId();
   let localStream;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !isAudioCall });
     callState = {
       callId,
       conversationId: active.id,
       conversationType: active.type,
       hostId: currentUser.id,
-      title: active.type === "group" ? active.peer.name : remoteMembers[0]?.name || active.peer.name,
+      mode,
+      title: active.type === "group"
+        ? `${isAudioCall ? "Gọi thoại nhóm" : "Gọi video nhóm"} - ${active.peer.name}`
+        : `${isAudioCall ? "Gọi thoại" : "Gọi video"} - ${remoteMembers[0]?.name || active.peer.name}`,
       peer: active.peer,
       localStream,
       peers: {},
       status: active.type === "group" ? "Đang gọi nhóm..." : "Đang gọi...",
       micEnabled: true,
-      cameraEnabled: true
+      cameraEnabled: !isAudioCall
     };
     renderApp();
     for (const member of remoteMembers) {
@@ -1447,8 +1517,14 @@ async function startVideoCall() {
   } catch (err) {
     localStream?.getTracks().forEach((track) => track.stop());
     cleanupCall();
-    showToast(err.name === "NotAllowedError" ? "Bạn cần cho phép camera và micro." : "Không bắt đầu được cuộc gọi video.");
+    const permissionText = isAudioCall ? "Bạn cần cho phép micro." : "Bạn cần cho phép camera và micro.";
+    const errorText = isAudioCall ? "Không bắt đầu được cuộc gọi thoại." : "Không bắt đầu được cuộc gọi video.";
+    showToast(err.name === "NotAllowedError" ? permissionText : errorText);
   }
+}
+
+async function startVideoCall() {
+  return startCall("video");
 }
 
 async function handleCallSignal(signal) {
@@ -1472,12 +1548,14 @@ async function handleCallSignal(signal) {
         conversationId: signal.conversationId,
         conversationName: conversation?.peer?.name || "cuộc trò chuyện",
         isGroup: conversation?.type === "group",
+        mode: signal.payload.mode || "video",
         from: signal.from,
         offers: {},
         pendingCandidates: {}
       };
       startRingtone();
     }
+    incomingCall.mode = incomingCall.mode || signal.payload.mode || "video";
     incomingCall.offers[signal.from.id] = signal.payload.description;
     incomingCall.from = incomingCall.from || signal.from;
     renderApp();
@@ -1563,22 +1641,26 @@ async function acceptIncomingCall() {
   stopRingtone();
   incomingCall = null;
   const active = conversations.find((item) => item.id === pending.conversationId);
+  const isAudioCall = pending.mode === "audio";
 
   let localStream;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !isAudioCall });
     callState = {
       callId: pending.callId,
       conversationId: pending.conversationId,
       conversationType: pending.isGroup ? "group" : "direct",
       hostId: pending.from.id,
-      title: pending.isGroup ? pending.conversationName : pending.from.name,
+      mode: pending.mode || "video",
+      title: pending.isGroup
+        ? `${isAudioCall ? "Gọi thoại nhóm" : "Gọi video nhóm"} - ${pending.conversationName}`
+        : `${isAudioCall ? "Gọi thoại" : "Gọi video"} - ${pending.from.name}`,
       peer: pending.from,
       localStream,
       peers: {},
       status: "Đang kết nối...",
       micEnabled: true,
-      cameraEnabled: true
+      cameraEnabled: !isAudioCall
     };
     renderApp();
     const offers = Object.entries(pending.offers || {});
@@ -1610,7 +1692,8 @@ async function acceptIncomingCall() {
     }
     cleanupCall();
     renderApp();
-    showToast(err.name === "NotAllowedError" ? "Bạn cần cho phép camera và micro." : "Không nhận được cuộc gọi.");
+    const permissionText = isAudioCall ? "Bạn cần cho phép micro." : "Bạn cần cho phép camera và micro.";
+    showToast(err.name === "NotAllowedError" ? permissionText : "Không nhận được cuộc gọi.");
   }
 }
 
@@ -1698,6 +1781,10 @@ function attachCallStreams() {
   document.querySelectorAll("[data-remote-video]").forEach((video) => {
     const peer = callState.peers?.[video.dataset.remoteVideo];
     if (peer?.remoteStream && video.srcObject !== peer.remoteStream) video.srcObject = peer.remoteStream;
+  });
+  document.querySelectorAll("[data-remote-audio]").forEach((audio) => {
+    const peer = callState.peers?.[audio.dataset.remoteAudio];
+    if (peer?.remoteStream && audio.srcObject !== peer.remoteStream) audio.srcObject = peer.remoteStream;
   });
 }
 
