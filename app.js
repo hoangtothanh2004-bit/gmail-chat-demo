@@ -939,11 +939,7 @@ function renderSettingsModal() {
             </div>
             <input name="avatarUrl" type="hidden" value="${escapeAttr(currentUser.avatarUrl || "")}">
             <div class="field">
-              <label>Dán link ảnh đại diện mới</label>
-              <input name="avatarUrlInput" placeholder="https://...">
-            </div>
-            <div class="field">
-              <label>Hoặc chọn ảnh từ máy</label>
+              <label>Ảnh đại diện</label>
               <input name="avatarFile" type="file" accept="image/*">
               <p class="field-hint">Ảnh sẽ được tự cắt vuông và nén trước khi lưu.</p>
             </div>
@@ -953,16 +949,17 @@ function renderSettingsModal() {
             </div>
           </div>
         </details>
-        <section class="settings-section">
-          <div class="settings-heading">
+        <details class="settings-section theme-dropdown">
+          <summary class="settings-heading">
             <strong>Cài đặt giao diện</strong>
             <p>Chọn độ sáng phù hợp với cách bạn sử dụng ứng dụng.</p>
-          </div>
+            <i aria-hidden="true"></i>
+          </summary>
           <div class="theme-options">
             ${[
               ["light", "Sáng", "Nền trắng, chữ đậm dễ đọc"],
               ["dark", "Tối", "Nền tối dịu mắt khi dùng ban đêm"],
-              ["system", "Theo máy", "Tự đổi theo thiết bị"]
+              ["system", "Hệ thống", "Tự đổi theo thiết bị"]
             ]
               .map(
                 ([theme, label, note]) => `
@@ -977,7 +974,7 @@ function renderSettingsModal() {
               )
               .join("")}
           </div>
-        </section>
+        </details>
         <div class="install-box">
           <div>
             <strong>Cài đặt ứng dụng</strong>
@@ -1329,8 +1326,7 @@ async function saveSettings(event) {
   const form = new FormData(event.currentTarget);
   const avatarFile = form.get("avatarFile");
   try {
-    const avatarUrlInput = String(form.get("avatarUrlInput") || "").trim();
-    const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : avatarUrlInput || form.get("avatarUrl");
+    const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : form.get("avatarUrl");
     const data = await api("/api/me", {
       method: "PATCH",
       body: {

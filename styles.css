@@ -1268,9 +1268,24 @@ button {
   background: #f8fafc;
 }
 
+.theme-dropdown summary {
+  list-style: none;
+}
+
+.theme-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
 .settings-heading strong,
 .settings-heading p {
   margin: 0;
+}
+
+.settings-heading {
+  position: relative;
+  padding-right: 28px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .settings-heading p {
@@ -1278,6 +1293,22 @@ button {
   color: var(--muted);
   line-height: 1.4;
   font-size: 13px;
+}
+
+.settings-heading i {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+.theme-dropdown[open] .settings-heading i {
+  transform: rotate(225deg);
 }
 
 .theme-options {
