@@ -463,7 +463,9 @@ function renderApp() {
   $("#app").innerHTML = `
     <main class="app-shell tab-${escapeAttr(activeTab)} ${mobileListOpen ? "mobile-list-open" : ""}">
       <nav class="rail" aria-label="Điều hướng">
-        ${renderAvatar(currentUser)}
+        <button class="rail-avatar-btn" id="railProfileBtn" title="Mở trang cá nhân" type="button">
+          ${renderAvatar(currentUser)}
+        </button>
         ${renderRailButton("messages", "Tin nhắn", "chat")}
         ${renderRailButton("friends", "Danh bạ", "contacts", requests.length)}
         ${renderRailButton("groups", "Nhóm", "groups")}
@@ -915,56 +917,78 @@ function renderTaskModal() {
 function renderSettingsModal() {
   return `
     <div class="modal-layer">
-      <form class="modal-panel" id="settingsForm">
+      <form class="modal-panel settings-panel" id="settingsForm">
         <header>
-          <h2>Cài đặt tài khoản</h2>
+          <h2>Cá nhân</h2>
           <button type="button" class="modal-close" data-close-modal>x</button>
         </header>
-        <div class="profile-preview">
-          ${renderAvatar(currentUser)}
-          <div>
-            <strong>${escapeHtml(currentUser.name)}</strong>
-            <p>${escapeHtml(currentUser.email)} - ${friends.length} bạn bè</p>
+        <details class="profile-dropdown">
+          <summary class="profile-preview profile-trigger">
+            ${renderAvatar(currentUser)}
+            <div>
+              <strong>${escapeHtml(currentUser.name)}</strong>
+              <p>${escapeHtml(currentUser.email)} - ${friends.length} bạn bè</p>
+              <span>Bấm để chỉnh sửa hồ sơ</span>
+            </div>
+            <i aria-hidden="true"></i>
+          </summary>
+          <div class="profile-edit-panel">
+            <div class="field">
+              <label>Tên hiển thị</label>
+              <input name="name" value="${escapeAttr(currentUser.name)}">
+            </div>
+            <input name="avatarUrl" type="hidden" value="${escapeAttr(currentUser.avatarUrl || "")}">
+            <div class="field">
+              <label>Dán link ảnh đại diện mới</label>
+              <input name="avatarUrlInput" placeholder="https://...">
+            </div>
+            <div class="field">
+              <label>Hoặc chọn ảnh từ máy</label>
+              <input name="avatarFile" type="file" accept="image/*">
+              <p class="field-hint">Ảnh sẽ được tự cắt vuông và nén trước khi lưu.</p>
+            </div>
+            <div class="field">
+              <label>Giới thiệu</label>
+              <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
+            </div>
           </div>
-        </div>
-        <div class="field">
-          <label>Tên hiển thị</label>
-          <input name="name" value="${escapeAttr(currentUser.name)}">
-        </div>
-        <div class="field">
-          <label>Ảnh đại diện bằng URL</label>
-          <input name="avatarUrl" value="${escapeAttr(currentUser.avatarUrl || "")}" placeholder="https://...">
-        </div>
-        <div class="field">
-          <label>Hoặc chọn ảnh từ máy</label>
-          <input name="avatarFile" type="file" accept="image/*">
-          <p class="field-hint">Ảnh sẽ được tự nén trước khi lưu làm ảnh đại diện.</p>
-        </div>
-        <div class="field">
-          <label>Giới thiệu</label>
-          <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
-        </div>
-        <div class="field">
-          <label>Giao diện</label>
-          <select name="theme">
+        </details>
+        <section class="settings-section">
+          <div class="settings-heading">
+            <strong>Cài đặt giao diện</strong>
+            <p>Chọn độ sáng phù hợp với cách bạn sử dụng ứng dụng.</p>
+          </div>
+          <div class="theme-options">
             ${[
-              ["light", "Sáng"],
-              ["dark", "Tối"],
-              ["system", "Theo hệ thống"]
+              ["light", "Sáng", "Nền trắng, chữ đậm dễ đọc"],
+              ["dark", "Tối", "Nền tối dịu mắt khi dùng ban đêm"],
+              ["system", "Theo máy", "Tự đổi theo thiết bị"]
             ]
-              .map(([theme, label]) => `<option value="${theme}" ${currentUser.theme === theme ? "selected" : ""}>${label}</option>`)
+              .map(
+                ([theme, label, note]) => `
+                  <label class="theme-option">
+                    <input type="radio" name="theme" value="${theme}" ${currentUser.theme === theme ? "checked" : ""}>
+                    <span>
+                      <strong>${label}</strong>
+                      <small>${note}</small>
+                    </span>
+                  </label>
+                `
+              )
               .join("")}
-          </select>
-        </div>
+          </div>
+        </section>
         <div class="install-box">
           <div>
-            <strong>Ứng dụng cài đặt</strong>
+            <strong>Cài đặt ứng dụng</strong>
             <p>${isStandaloneApp() ? "Bạn đang mở bằng bản đã cài." : "Cài app vào màn hình chính hoặc máy tính để mở nhanh hơn."}</p>
           </div>
           <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
         </div>
-        <button class="primary-btn" type="submit">Lưu cài đặt</button>
-        <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
+        <div class="settings-actions">
+          <button class="primary-btn" type="submit">Lưu thay đổi</button>
+          <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
+        </div>
       </form>
     </div>
   `;
@@ -1162,6 +1186,10 @@ function bindAppEvents() {
     modal = "settings";
     renderApp();
   });
+  $("#railProfileBtn")?.addEventListener("click", () => {
+    modal = "settings";
+    renderApp();
+  });
   $("#mobileBackBtn")?.addEventListener("click", () => {
     activeTab = "messages";
     mobileListOpen = true;
@@ -1301,7 +1329,8 @@ async function saveSettings(event) {
   const form = new FormData(event.currentTarget);
   const avatarFile = form.get("avatarFile");
   try {
-    const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : form.get("avatarUrl");
+    const avatarUrlInput = String(form.get("avatarUrlInput") || "").trim();
+    const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : avatarUrlInput || form.get("avatarUrl");
     const data = await api("/api/me", {
       method: "PATCH",
       body: {

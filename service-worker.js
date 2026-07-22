@@ -1,9 +1,9 @@
-const CACHE_NAME = "gmail-chat-demo-v20260722-avatar-frame";
+const CACHE_NAME = "gmail-chat-demo-v20260722-profile-menu";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20260722-avatar-frame",
-  "/app.js?v=20260722-avatar-frame",
+  "/styles.css?v=20260722-profile-menu",
+  "/app.js?v=20260722-profile-menu",
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/icon-192.png",

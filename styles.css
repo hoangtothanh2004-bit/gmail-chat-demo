@@ -313,6 +313,20 @@ button {
   box-shadow: 0 12px 24px rgba(0, 58, 150, 0.24);
 }
 
+.rail-avatar-btn {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.rail-avatar-btn:hover .avatar {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 30px rgba(0, 58, 150, 0.3);
+}
+
 .icon-btn {
   position: relative;
   width: 100%;
@@ -1167,8 +1181,23 @@ button {
   color: var(--muted);
 }
 
-.profile-preview {
+.settings-panel {
+  width: min(580px, 100%);
+}
+
+.profile-dropdown {
   margin-bottom: 16px;
+}
+
+.profile-dropdown summary {
+  list-style: none;
+}
+
+.profile-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-preview {
   padding: 12px;
   border-radius: 12px;
   display: flex;
@@ -1177,8 +1206,21 @@ button {
   background: #f8fafc;
 }
 
+.profile-trigger {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.profile-trigger:hover {
+  background: #edf4ff;
+  transform: translateY(-1px);
+}
+
 .profile-preview strong,
-.profile-preview p {
+.profile-preview p,
+.profile-preview span {
   margin: 0;
 }
 
@@ -1186,6 +1228,97 @@ button {
   margin-top: 4px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.profile-preview span {
+  display: block;
+  margin-top: 5px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-trigger i {
+  width: 9px;
+  height: 9px;
+  margin-left: auto;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.16s ease;
+}
+
+.profile-dropdown[open] .profile-trigger i {
+  transform: rotate(225deg);
+}
+
+.profile-edit-panel {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.settings-section {
+  margin: 4px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.settings-heading strong,
+.settings-heading p {
+  margin: 0;
+}
+
+.settings-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.4;
+  font-size: 13px;
+}
+
+.theme-options {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.theme-option {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  background: white;
+  cursor: pointer;
+}
+
+.theme-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--blue);
+}
+
+.theme-option strong,
+.theme-option small {
+  display: block;
+}
+
+.theme-option small {
+  margin-top: 2px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.theme-option:has(input:checked) {
+  border-color: rgba(0, 104, 255, 0.45);
+  background: #edf4ff;
+  box-shadow: 0 10px 24px rgba(0, 104, 255, 0.08);
 }
 
 .install-box {
@@ -1213,7 +1346,12 @@ button {
 }
 
 .settings-logout {
-  margin-top: 10px;
+  margin-top: 0;
+}
+
+.settings-actions {
+  display: grid;
+  gap: 10px;
 }
 
 .profile-card {
@@ -1564,6 +1702,9 @@ body[data-theme="dark"] .muted-btn,
 body[data-theme="dark"] .status-label,
 body[data-theme="dark"] .member-picker,
 body[data-theme="dark"] .profile-preview,
+body[data-theme="dark"] .profile-edit-panel,
+body[data-theme="dark"] .settings-section,
+body[data-theme="dark"] .theme-option,
 body[data-theme="dark"] .install-box,
 body[data-theme="dark"] .conversation-list {
   background: var(--soft);
@@ -1604,6 +1745,11 @@ body[data-theme="dark"] .date-chip {
 body[data-theme="dark"] .field label,
 body[data-theme="dark"] .muted-btn {
   color: var(--ink);
+}
+
+body[data-theme="dark"] .profile-trigger:hover,
+body[data-theme="dark"] .theme-option:has(input:checked) {
+  background: #142746;
 }
 
 body[data-theme="dark"] .muted-btn.danger-text {
@@ -1668,6 +1814,10 @@ body[data-theme="dark"] .muted-btn.danger-text {
   }
 
   .rail .avatar {
+    display: none;
+  }
+
+  .rail-avatar-btn {
     display: none;
   }
 
