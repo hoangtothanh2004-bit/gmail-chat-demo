@@ -464,12 +464,15 @@ function renderApp() {
     <main class="app-shell tab-${escapeAttr(activeTab)} ${mobileListOpen ? "mobile-list-open" : ""}">
       <nav class="rail" aria-label="Điều hướng">
         ${renderAvatar(currentUser)}
-        <button class="icon-btn ${activeTab === "messages" ? "active" : ""}" data-rail-tab="messages" title="Tin nhắn" aria-current="${activeTab === "messages" ? "page" : "false"}">Tin nhắn</button>
-        <button class="icon-btn ${activeTab === "friends" ? "active" : ""}" data-rail-tab="friends" title="Danh bạ" aria-current="${activeTab === "friends" ? "page" : "false"}">Danh bạ</button>
-        <button class="icon-btn ${activeTab === "groups" ? "active" : ""}" data-rail-tab="groups" title="Nhóm" aria-current="${activeTab === "groups" ? "page" : "false"}">Nhóm</button>
-        <button class="icon-btn ${activeTab === "tasks" ? "active" : ""}" data-rail-tab="tasks" title="Công việc" aria-current="${activeTab === "tasks" ? "page" : "false"}">Công việc</button>
+        ${renderRailButton("messages", "Tin nhắn", "chat")}
+        ${renderRailButton("friends", "Danh bạ", "contacts", requests.length)}
+        ${renderRailButton("groups", "Nhóm", "groups")}
+        ${renderRailButton("tasks", "Công việc", "tasks", tasks.filter((task) => task.status !== "done").length)}
         <div class="rail-spacer"></div>
-        <button class="icon-btn" id="settingsBtn" title="Cá nhân">Cá nhân</button>
+        <button class="icon-btn ${modal === "settings" ? "active" : ""}" id="settingsBtn" title="Cá nhân" type="button">
+          <span class="nav-icon nav-icon-profile" aria-hidden="true"></span>
+          <span class="nav-label">Cá nhân</span>
+        </button>
       </nav>
 
       <aside class="sidebar">
@@ -504,6 +507,17 @@ function renderApp() {
   bindAppEvents();
   attachCallStreams();
   scrollMessagesToBottom();
+}
+
+function renderRailButton(tab, label, icon, badge = 0) {
+  const badgeText = badge > 9 ? "9+" : String(badge || "");
+  return `
+    <button class="icon-btn ${activeTab === tab ? "active" : ""}" data-rail-tab="${escapeAttr(tab)}" title="${escapeAttr(label)}" aria-current="${activeTab === tab ? "page" : "false"}" type="button">
+      <span class="nav-icon nav-icon-${escapeAttr(icon)}" aria-hidden="true"></span>
+      <span class="nav-label">${escapeHtml(label)}</span>
+      ${badge ? `<span class="nav-badge">${escapeHtml(badgeText)}</span>` : ""}
+    </button>
+  `;
 }
 
 function renderTab(tab, label) {
