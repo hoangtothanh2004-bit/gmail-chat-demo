@@ -900,6 +900,10 @@ function renderDetails(active) {
         <h3>Công việc trong nhóm</h3>
         ${renderTasksList(conversationTasks, false)}
       </div>
+      <div class="detail-block group-danger-actions">
+        <button class="muted-btn danger-text" data-leave-group="${escapeAttr(active.id)}">Rời nhóm</button>
+        ${active.canManage ? `<button class="muted-btn danger-text" data-delete-group="${escapeAttr(active.id)}">Xóa nhóm</button>` : ""}
+      </div>
     `;
   }
 
@@ -1086,6 +1090,93 @@ function renderSettingsModal() {
         <header class="profile-page-top">
           <button type="button" class="profile-close-btn" data-close-modal aria-label="Đóng">×</button>
           <h2>Trang cá nhân</h2>
+          <details class="profile-settings-menu">
+            <summary aria-label="Mở cài đặt">⚙</summary>
+            <div class="settings-menu-panel">
+              <section class="settings-menu-section">
+                <h3>Cài đặt thông tin</h3>
+                <div class="field">
+                  <label>Tên hiển thị</label>
+                  <input name="name" value="${escapeAttr(currentUser.name)}">
+                </div>
+                <div class="field">
+                  <label>Giới thiệu</label>
+                  <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
+                </div>
+              </section>
+
+              <section class="settings-menu-section">
+                <h3>Thay đổi Gmail</h3>
+                <div class="field">
+                  <label>Gmail đăng nhập</label>
+                  <input name="email" value="${escapeAttr(currentUser.email)}" inputmode="email" autocomplete="email">
+                  <p class="field-hint">Sau khi lưu, bạn sẽ đăng nhập bằng Gmail mới này.</p>
+                </div>
+              </section>
+
+              <section class="settings-menu-section">
+                <h3>Thông tin cá nhân</h3>
+                <div class="field">
+                  <label>Ngày sinh</label>
+                  <input name="birthday" type="date" value="${escapeAttr(currentUser.birthday || "")}">
+                </div>
+                <div class="field">
+                  <label>Giới tính</label>
+                  <select name="gender">
+                    ${["", "Nam", "Nữ", "Khác"]
+                      .map((gender) => `<option value="${escapeAttr(gender)}" ${currentUser.gender === gender ? "selected" : ""}>${gender || "Chưa cập nhật"}</option>`)
+                      .join("")}
+                  </select>
+                </div>
+                <div class="field">
+                  <label>Quê quán</label>
+                  <input name="hometown" value="${escapeAttr(currentUser.hometown || "")}" placeholder="Ví dụ: Phú Thọ">
+                </div>
+              </section>
+
+              <details class="settings-menu-section theme-dropdown">
+                <summary class="settings-heading">
+                  <strong>Cài đặt giao diện</strong>
+                  <p>Chọn độ sáng phù hợp với cách bạn sử dụng ứng dụng.</p>
+                  <i aria-hidden="true"></i>
+                </summary>
+                <div class="theme-options">
+                  ${[
+                    ["light", "Sáng", "Nền trắng, chữ đậm dễ đọc"],
+                    ["dark", "Tối", "Nền tối dịu mắt khi dùng ban đêm"],
+                    ["system", "Hệ thống", "Tự đổi theo thiết bị"]
+                  ]
+                    .map(
+                      ([theme, label, note]) => `
+                        <label class="theme-option">
+                          <input type="radio" name="theme" value="${theme}" ${currentUser.theme === theme ? "checked" : ""}>
+                          <span>
+                            <strong>${label}</strong>
+                            <small>${note}</small>
+                          </span>
+                        </label>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </details>
+
+              <section class="settings-menu-section">
+                <div class="install-box compact">
+                  <div>
+                    <strong>Cài đặt ứng dụng</strong>
+                    <p>${isStandaloneApp() ? "Bạn đang mở bằng bản đã cài." : "Cài app vào màn hình chính hoặc máy tính để mở nhanh hơn."}</p>
+                  </div>
+                  <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
+                </div>
+              </section>
+
+              <div class="settings-actions">
+                <button class="primary-btn" type="submit">Lưu cài đặt</button>
+                <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
+              </div>
+            </div>
+          </details>
         </header>
 
         <input name="avatarUrl" type="hidden" value="${escapeAttr(currentUser.avatarUrl || "")}">
@@ -1110,35 +1201,6 @@ function renderSettingsModal() {
                 <h3>${escapeHtml(currentUser.name)}</h3>
                 <p>${escapeHtml(currentUser.about || "Thêm giới thiệu cho trang cá nhân của bạn.")}</p>
               </div>
-              <details class="profile-edit-dropdown">
-                <summary>Chỉnh sửa thông tin</summary>
-                <div class="profile-edit-panel">
-                  <div class="field">
-                    <label>Tên hiển thị</label>
-                    <input name="name" value="${escapeAttr(currentUser.name)}">
-                  </div>
-                  <div class="field">
-                    <label>Giới thiệu</label>
-                    <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
-                  </div>
-                  <div class="field">
-                    <label>Ngày sinh</label>
-                    <input name="birthday" type="date" value="${escapeAttr(currentUser.birthday || "")}">
-                  </div>
-                  <div class="field">
-                    <label>Giới tính</label>
-                    <select name="gender">
-                      ${["", "Nam", "Nữ", "Khác"]
-                        .map((gender) => `<option value="${escapeAttr(gender)}" ${currentUser.gender === gender ? "selected" : ""}>${gender || "Chưa cập nhật"}</option>`)
-                        .join("")}
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label>Quê quán</label>
-                    <input name="hometown" value="${escapeAttr(currentUser.hometown || "")}" placeholder="Ví dụ: Phú Thọ">
-                  </div>
-                </div>
-              </details>
             </div>
           </div>
 
@@ -1174,45 +1236,6 @@ function renderSettingsModal() {
             </div>
           </section>
 
-          <details class="settings-section theme-dropdown">
-            <summary class="settings-heading">
-              <strong>Cài đặt giao diện</strong>
-              <p>Chọn độ sáng phù hợp với cách bạn sử dụng ứng dụng.</p>
-              <i aria-hidden="true"></i>
-            </summary>
-            <div class="theme-options">
-              ${[
-                ["light", "Sáng", "Nền trắng, chữ đậm dễ đọc"],
-                ["dark", "Tối", "Nền tối dịu mắt khi dùng ban đêm"],
-                ["system", "Hệ thống", "Tự đổi theo thiết bị"]
-              ]
-                .map(
-                  ([theme, label, note]) => `
-                    <label class="theme-option">
-                      <input type="radio" name="theme" value="${theme}" ${currentUser.theme === theme ? "checked" : ""}>
-                      <span>
-                        <strong>${label}</strong>
-                        <small>${note}</small>
-                      </span>
-                    </label>
-                  `
-                )
-                .join("")}
-            </div>
-          </details>
-
-          <div class="install-box">
-            <div>
-              <strong>Cài đặt ứng dụng</strong>
-              <p>${isStandaloneApp() ? "Bạn đang mở bằng bản đã cài." : "Cài app vào màn hình chính hoặc máy tính để mở nhanh hơn."}</p>
-            </div>
-            <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
-          </div>
-
-          <div class="settings-actions">
-            <button class="primary-btn" type="submit">Lưu thay đổi</button>
-            <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
-          </div>
         </section>
       </form>
     </div>
@@ -1380,6 +1403,12 @@ function bindAppEvents() {
   });
   document.querySelectorAll("[data-unfriend]").forEach((button) => {
     button.addEventListener("click", () => unfriend(button.dataset.unfriend));
+  });
+  document.querySelectorAll("[data-leave-group]").forEach((button) => {
+    button.addEventListener("click", () => leaveGroup(button.dataset.leaveGroup));
+  });
+  document.querySelectorAll("[data-delete-group]").forEach((button) => {
+    button.addEventListener("click", () => deleteGroup(button.dataset.deleteGroup));
   });
   document.querySelectorAll("[data-pin-message]").forEach((button) => {
     button.addEventListener("click", () => pinMessage(button.dataset.pinMessage));
@@ -1581,6 +1610,7 @@ async function saveSettings(event) {
       method: "PATCH",
       body: {
         name: form.get("name"),
+        email: form.get("email"),
         avatarUrl,
         coverUrl,
         about: form.get("about"),
@@ -1635,6 +1665,38 @@ async function unfriend(userId) {
     await refreshData();
     renderApp();
     showToast("Đã xóa kết bạn.");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function leaveGroup(groupId) {
+  if (!groupId) return;
+  if (!window.confirm("Bạn muốn rời khỏi nhóm này?")) return;
+  try {
+    await api(`/api/groups/${groupId}/leave`, { method: "POST" });
+    if (activeConversationId === groupId) activeConversationId = "";
+    activeTab = "groups";
+    mobileListOpen = true;
+    await refreshData();
+    renderApp();
+    showToast("Đã rời nhóm.");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function deleteGroup(groupId) {
+  if (!groupId) return;
+  if (!window.confirm("Xóa nhóm này cho tất cả thành viên? Tin nhắn và công việc trong nhóm sẽ bị xóa.")) return;
+  try {
+    await api(`/api/groups/${groupId}`, { method: "DELETE" });
+    if (activeConversationId === groupId) activeConversationId = "";
+    activeTab = "groups";
+    mobileListOpen = true;
+    await refreshData();
+    renderApp();
+    showToast("Đã xóa nhóm.");
   } catch (err) {
     showToast(err.message);
   }

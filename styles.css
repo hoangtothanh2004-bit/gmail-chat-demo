@@ -1462,6 +1462,11 @@ button {
   gap: 10px;
 }
 
+.group-danger-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .profile-modal-layer {
   padding: 0;
   align-items: stretch;
@@ -1503,6 +1508,68 @@ button {
   background: rgba(15, 23, 42, 0.48);
   font-size: 30px;
   line-height: 1;
+}
+
+.profile-settings-menu {
+  grid-column: 3;
+  justify-self: end;
+  position: relative;
+}
+
+.profile-settings-menu > summary {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: #eef2f7;
+  font-size: 22px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.profile-settings-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-menu-panel {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: min(430px, calc(100vw - 28px));
+  max-height: calc(100dvh - 78px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 24px 72px rgba(16, 32, 51, 0.24);
+  z-index: 5;
+}
+
+.settings-menu-section {
+  margin-bottom: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.settings-menu-section h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.settings-menu-section .field:last-child {
+  margin-bottom: 0;
+}
+
+.install-box.compact {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .profile-page {
@@ -2150,6 +2217,8 @@ body[data-theme="dark"] .status-label,
 body[data-theme="dark"] .member-picker,
 body[data-theme="dark"] .profile-preview,
 body[data-theme="dark"] .profile-edit-panel,
+body[data-theme="dark"] .settings-menu-panel,
+body[data-theme="dark"] .settings-menu-section,
 body[data-theme="dark"] .settings-section,
 body[data-theme="dark"] .theme-option,
 body[data-theme="dark"] .install-box,
@@ -2202,6 +2271,7 @@ body[data-theme="dark"] .theme-option:has(input:checked) {
 }
 
 body[data-theme="dark"] .profile-edit-dropdown summary,
+body[data-theme="dark"] .profile-settings-menu > summary,
 body[data-theme="dark"] .call-history-card {
   background: #142746;
 }
@@ -2492,6 +2562,15 @@ body[data-theme="dark"] .muted-btn.danger-text {
 
   .profile-page-top h2 {
     font-size: 20px;
+  }
+
+  .settings-menu-panel {
+    position: fixed;
+    top: 64px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-height: calc(100dvh - 82px);
   }
 
   .profile-page {

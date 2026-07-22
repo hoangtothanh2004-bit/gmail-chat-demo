@@ -1,9 +1,9 @@
-const CACHE_NAME = "gmail-chat-demo-v20260722-profile-call-icons";
+const CACHE_NAME = "gmail-chat-demo-v20260722-profile-gear-groups";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20260722-profile-call-icons",
-  "/app.js?v=20260722-profile-call-icons",
+  "/styles.css?v=20260722-profile-gear-groups",
+  "/app.js?v=20260722-profile-gear-groups",
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/icon-192.png",

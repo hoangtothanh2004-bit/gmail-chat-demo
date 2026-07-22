@@ -322,6 +322,8 @@ function publicConversation(conversation, userId) {
       id: conversation.id,
       type: "group",
       name: conversation.name,
+      createdBy: conversation.createdBy || "",
+      canManage: conversation.createdBy === userId,
       peer: {
         id: conversation.id,
         name: conversation.name,
@@ -692,7 +694,11 @@ async function handleApi(req, res, url) {
       if (!session) return;
       const body = await readJson(req);
       const name = String(body.name ?? session.user.name).trim();
+      const email = String(body.email ?? session.user.email).trim().toLowerCase();
       if (!name) return sendJson(res, 400, { error: "Tên hiển thị không được rỗng." });
+      if (!isGmail(email)) return sendJson(res, 400, { error: "Gmail mới cần là địa chỉ @gmail.com hợp lệ." });
+      const duplicateEmail = db.users.find((user) => user.email === email && user.id !== session.user.id);
+      if (duplicateEmail) return sendJson(res, 409, { error: "Gmail này đã được tài khoản khác sử dụng." });
 
       let avatarUrl = session.user.avatarUrl || "";
       let coverUrl = session.user.coverUrl || "";
@@ -705,6 +711,7 @@ async function handleApi(req, res, url) {
 
       const theme = ["light", "dark", "system"].includes(body.theme) ? body.theme : session.user.theme || "light";
       session.user.name = name.slice(0, 80);
+      session.user.email = email;
       session.user.about = String(body.about ?? session.user.about ?? "").trim().slice(0, 160);
       session.user.avatarUrl = avatarUrl;
       session.user.coverUrl = coverUrl;
@@ -879,6 +886,61 @@ async function handleApi(req, res, url) {
       saveDb();
       pushConversationRefresh(conversation, "group-created", session.user.id);
       return sendJson(res, 201, { conversation: publicConversation(conversation, session.user.id) });
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/groups/") && url.pathname.endsWith("/leave")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const groupId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const conversation = db.conversations.find((item) => item.id === groupId && item.type === "group");
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Không tìm thấy nhóm." });
+      }
+
+      const oldParticipants = [...conversation.participantIds];
+      conversation.participantIds = conversation.participantIds.filter((id) => id !== session.user.id);
+      if (!conversation.participantIds.length) {
+        db.conversations = db.conversations.filter((item) => item.id !== conversation.id);
+        db.messages = db.messages.filter((message) => message.conversationId !== conversation.id);
+        db.tasks = db.tasks.filter((task) => task.conversationId !== conversation.id);
+        saveDb();
+        pushEvent(oldParticipants, "refresh", { reason: "group-left", conversationId: conversation.id, actorId: session.user.id });
+        return sendJson(res, 200, { ok: true, deleted: true });
+      }
+
+      if (conversation.createdBy === session.user.id) conversation.createdBy = conversation.participantIds[0];
+      db.messages.push({
+        id: createId("msg"),
+        conversationId: conversation.id,
+        senderId: session.user.id,
+        text: `${session.user.name} đã rời nhóm.`,
+        type: "system",
+        createdAt: new Date().toISOString()
+      });
+      saveDb();
+      pushEvent(oldParticipants, "refresh", { reason: "group-left", conversationId: conversation.id, actorId: session.user.id });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/groups/")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const groupId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const conversation = db.conversations.find((item) => item.id === groupId && item.type === "group");
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Không tìm thấy nhóm." });
+      }
+      if (conversation.createdBy !== session.user.id) {
+        return sendJson(res, 403, { error: "Chỉ người tạo nhóm mới có thể xóa nhóm." });
+      }
+
+      const oldParticipants = [...conversation.participantIds];
+      db.conversations = db.conversations.filter((item) => item.id !== conversation.id);
+      db.messages = db.messages.filter((message) => message.conversationId !== conversation.id);
+      db.tasks = db.tasks.filter((task) => task.conversationId !== conversation.id);
+      saveDb();
+      pushEvent(oldParticipants, "refresh", { reason: "group-deleted", conversationId: conversation.id, actorId: session.user.id });
+      return sendJson(res, 200, { ok: true });
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/messages")) {
