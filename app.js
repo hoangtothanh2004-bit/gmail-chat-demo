@@ -105,15 +105,15 @@ async function resizeAvatarFile(file) {
 
   const dataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(dataUrl);
-  const maxSize = 512;
-  const ratio = Math.min(1, maxSize / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * ratio));
-  const height = Math.max(1, Math.round(image.height * ratio));
+  const size = 512;
+  const sourceSize = Math.min(image.width, image.height);
+  const sourceX = Math.max(0, Math.round((image.width - sourceSize) / 2));
+  const sourceY = Math.max(0, Math.round((image.height - sourceSize) / 2));
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
-  canvas.width = width;
-  canvas.height = height;
-  context.drawImage(image, 0, 0, width, height);
+  canvas.width = size;
+  canvas.height = size;
+  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
   return canvas.toDataURL("image/jpeg", 0.86);
 }
 
