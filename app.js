@@ -34,6 +34,7 @@ const rtcConfig = {
 };
 
 const messageSoundReasons = new Set(["message", "task-created", "friend-request", "friend-accepted", "group-created", "call-recorded", "story-created"]);
+const storyVideoMaxBytes = 8 * 1024 * 1024;
 const chatIcons = ["👍", "❤️", "😂", "😊", "😍", "🙏", "🎉", "🔥", "😮", "😭", "👏", "✅", "💪", "🌹", "⭐", "💯"];
 
 function $(selector) {
@@ -177,6 +178,28 @@ async function resizeCoverFile(file) {
   canvas.height = height;
   context.drawImage(image, offsetX, offsetY, scaledWidth, scaledHeight);
   return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+function isVideoMediaUrl(mediaUrl) {
+  const value = String(mediaUrl || "").trim();
+  return value.startsWith("data:video/") || /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(value);
+}
+
+async function prepareStoryMediaFile(file) {
+  if (!file) return "";
+  if (file.type.startsWith("image/")) return resizeCoverFile(file);
+  if (file.type.startsWith("video/")) {
+    if (file.size > storyVideoMaxBytes) throw new Error("Video story quá lớn. Vui lòng chọn video dưới 8MB.");
+    return readFileAsDataUrl(file);
+  }
+  throw new Error("Story chỉ hỗ trợ ảnh hoặc video.");
+}
+
+function getCallMediaConstraints(isAudioCall, facingMode = "user") {
+  return {
+    audio: true,
+    video: isAudioCall ? false : { facingMode: { ideal: facingMode } }
+  };
 }
 
 async function api(path, options = {}) {
@@ -721,6 +744,19 @@ function renderGroupsList() {
   return groups.map((item) => renderConversationButton(item)).join("");
 }
 
+function storyChipStyle(story) {
+  if (!story?.mediaUrl || isVideoMediaUrl(story.mediaUrl)) return "";
+  return ` style="background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.58), rgba(37, 99, 235, 0.46)), url('${escapeAttr(story.mediaUrl)}')"`;
+}
+
+function renderStoryMedia(mediaUrl) {
+  if (!mediaUrl) return "";
+  if (isVideoMediaUrl(mediaUrl)) {
+    return `<video class="feed-media feed-video" src="${escapeAttr(mediaUrl)}" controls playsinline preload="metadata"></video>`;
+  }
+  return `<div class="feed-media" style="background-image: url('${escapeAttr(mediaUrl)}')"></div>`;
+}
+
 function renderStoryRail() {
   const visibleStories = (stories || []).slice(0, 10);
   return `
@@ -732,13 +768,14 @@ function renderStoryRail() {
       ${visibleStories
         .map(
           (story) => `
-            <article class="story-chip ${story.type === "story" ? "story-photo" : "story-note"}"${story.mediaUrl ? ` style="background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.58), rgba(37, 99, 235, 0.46)), url('${escapeAttr(story.mediaUrl)}')"` : ""}>
+            <article class="story-chip ${story.type === "story" ? "story-photo" : "story-note"} ${isVideoMediaUrl(story.mediaUrl) ? "story-video" : ""}"${storyChipStyle(story)}>
               ${renderAvatar(story.author || { avatar: "?" })}
               <div>
                 <strong>${escapeHtml(story.author?.name || "Bạn bè")}</strong>
                 <p>${escapeHtml(story.text || (story.type === "story" ? "Story mới" : "Ghi chú mới"))}</p>
                 <small>Tự mất sau 24 giờ · ${escapeHtml(formatTime(story.createdAt))}</small>
               </div>
+              ${isVideoMediaUrl(story.mediaUrl) ? `<span class="story-video-badge">Video</span>` : ""}
               ${story.userId === currentUser.id ? `<button class="story-delete" title="Xóa" type="button" data-delete-story="${escapeAttr(story.id)}">×</button>` : ""}
             </article>
           `
@@ -791,7 +828,7 @@ function renderFeedPost(story) {
         ${story.userId === currentUser.id ? `<button class="story-delete feed-delete" title="Xóa" type="button" data-delete-story="${escapeAttr(story.id)}">×</button>` : ""}
       </header>
       <p>${escapeHtml(story.text || "Đã đăng một story mới.")}</p>
-      ${story.mediaUrl ? `<div class="feed-media" style="background-image: url('${escapeAttr(story.mediaUrl)}')"></div>` : ""}
+      ${renderStoryMedia(story.mediaUrl)}
       <footer>
         <button type="button">♡ Thích</button>
         <button type="button">💬 Bình luận</button>
@@ -1137,9 +1174,9 @@ function renderStoryModal() {
           <textarea name="text" rows="4" maxlength="500" placeholder="Bạn đang nghĩ gì?"></textarea>
         </div>
         <div class="field">
-          <label>Ảnh story nếu muốn</label>
-          <input name="mediaFile" type="file" accept="image/*">
-          <p class="field-hint">Story và ghi chú sẽ tự mất sau 24 giờ.</p>
+          <label>Ảnh hoặc video story nếu muốn</label>
+          <input name="mediaFile" type="file" accept="image/*,video/*">
+          <p class="field-hint">Video story nên dưới 8MB để bản demo tải nhanh. Story và ghi chú sẽ tự mất sau 24 giờ.</p>
         </div>
         <button class="primary-btn" type="submit">Đăng 24 giờ</button>
       </form>
@@ -1601,6 +1638,7 @@ function renderCallLayer() {
         <div class="call-actions">
           <button class="call-btn" id="toggleMicBtn">${callState.micEnabled ? "Tắt mic" : "Bật mic"}</button>
           ${isAudioCall ? "" : `<button class="call-btn" id="toggleCameraBtn">${callState.cameraEnabled ? "Tắt camera" : "Bật camera"}</button>`}
+          ${isAudioCall ? "" : `<button class="call-btn" id="switchCameraBtn">Đổi camera</button>`}
           <button class="call-btn danger" id="endCallBtn">Kết thúc</button>
         </div>
       </section>
@@ -1733,6 +1771,7 @@ function bindAppEvents() {
   $("#endCallBtn")?.addEventListener("click", () => endCall(true));
   $("#toggleMicBtn")?.addEventListener("click", toggleMic);
   $("#toggleCameraBtn")?.addEventListener("click", toggleCamera);
+  $("#switchCameraBtn")?.addEventListener("click", switchCamera);
   $("#minimizeCallBtn")?.addEventListener("click", () => showToast("Cuộc gọi đang hiển thị trên màn hình."));
   $("#logoutBtn")?.addEventListener("click", logout);
   $("#messageForm")?.addEventListener("submit", sendMessage);
@@ -1741,6 +1780,9 @@ function bindAppEvents() {
   $("#storyForm")?.addEventListener("submit", createStory);
   $("#groupOptionsForm")?.addEventListener("submit", saveGroupOptions);
   $("#settingsForm")?.addEventListener("submit", saveSettings);
+  document.querySelectorAll('input[name="avatarFile"], input[name="coverFile"]').forEach((input) => {
+    input.addEventListener("change", autoSaveProfileImage);
+  });
   $("#installAppBtn")?.addEventListener("click", installApp);
   $("#settingsLogoutBtn")?.addEventListener("click", logout);
   $("#profileSettingsBackBtn")?.addEventListener("click", () => {
@@ -1883,7 +1925,7 @@ async function createStory(event) {
   const form = new FormData(event.currentTarget);
   const mediaFile = form.get("mediaFile");
   try {
-    const mediaUrl = mediaFile instanceof File && mediaFile.size ? await resizeCoverFile(mediaFile) : "";
+    const mediaUrl = mediaFile instanceof File && mediaFile.size ? await prepareStoryMediaFile(mediaFile) : "";
     await api("/api/stories", {
       method: "POST",
       body: {
@@ -1959,7 +2001,19 @@ async function updateTaskStatus(taskId, status) {
   }
 }
 
-async function saveSettings(event) {
+async function autoSaveProfileImage(event) {
+  const form = event.currentTarget?.form;
+  if (!form) return;
+  await saveSettings(
+    {
+      preventDefault() {},
+      currentTarget: form
+    },
+    { keepOpen: true, imageOnly: true }
+  );
+}
+
+async function saveSettings(event, options = {}) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const avatarFile = form.get("avatarFile");
@@ -1983,10 +2037,10 @@ async function saveSettings(event) {
     });
     currentUser = data.user;
     localStorage.setItem("gmail-chat-theme", currentUser.theme || "light");
-    modal = null;
+    if (!options.keepOpen) modal = null;
     await refreshData({ keepMessages: true });
     renderApp();
-    showToast("Đã lưu cài đặt.");
+    showToast(options.imageOnly ? "Đã cập nhật ảnh." : "Đã lưu cài đặt.");
   } catch (err) {
     showToast(err.message);
   }
@@ -2232,7 +2286,7 @@ async function startCall(mode = "video") {
   const callId = makeCallId();
   let localStream;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !isAudioCall });
+    localStream = await navigator.mediaDevices.getUserMedia(getCallMediaConstraints(isAudioCall, "user"));
     callState = {
       callId,
       conversationId: active.id,
@@ -2250,7 +2304,8 @@ async function startCall(mode = "video") {
       connectedAt: 0,
       recorded: false,
       micEnabled: true,
-      cameraEnabled: !isAudioCall
+      cameraEnabled: !isAudioCall,
+      facingMode: isAudioCall ? "" : "user"
     };
     renderApp();
     showToast(callState.title);
@@ -2397,7 +2452,7 @@ async function acceptIncomingCall() {
 
   let localStream;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: !isAudioCall });
+    localStream = await navigator.mediaDevices.getUserMedia(getCallMediaConstraints(isAudioCall, "user"));
     callState = {
       callId: pending.callId,
       conversationId: pending.conversationId,
@@ -2415,7 +2470,8 @@ async function acceptIncomingCall() {
       connectedAt: 0,
       recorded: false,
       micEnabled: true,
-      cameraEnabled: !isAudioCall
+      cameraEnabled: !isAudioCall,
+      facingMode: isAudioCall ? "" : "user"
     };
     renderApp();
     const offers = Object.entries(pending.offers || {});
@@ -2497,6 +2553,42 @@ function toggleCamera() {
   callState.cameraEnabled = !callState.cameraEnabled;
   callState.localStream.getVideoTracks().forEach((track) => (track.enabled = callState.cameraEnabled));
   renderApp();
+}
+
+async function switchCamera() {
+  if (!callState?.localStream || callState.mode === "audio") return;
+  const nextFacingMode = callState.facingMode === "environment" ? "user" : "environment";
+  let nextStream;
+
+  try {
+    nextStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: nextFacingMode } } });
+    const nextTrack = nextStream.getVideoTracks()[0];
+    if (!nextTrack) throw new Error("Không tìm thấy camera khác.");
+
+    const previousVideoTrack = callState.localStream.getVideoTracks()[0];
+    nextTrack.enabled = callState.cameraEnabled;
+    if (previousVideoTrack) {
+      callState.localStream.removeTrack(previousVideoTrack);
+      previousVideoTrack.stop();
+    }
+    callState.localStream.addTrack(nextTrack);
+
+    await Promise.all(Object.values(callState.peers || {}).map(async (peer) => {
+      const sender = peer.peerConnection
+        ?.getSenders()
+        .find((item) => item.track?.kind === "video");
+      if (sender) await sender.replaceTrack(nextTrack);
+      else peer.peerConnection?.addTrack(nextTrack, callState.localStream);
+    }));
+
+    callState.facingMode = nextFacingMode;
+    renderApp();
+    attachCallStreams();
+    showToast(nextFacingMode === "environment" ? "Đã chuyển sang camera sau." : "Đã chuyển sang camera trước.");
+  } catch {
+    nextStream?.getTracks().forEach((track) => track.stop());
+    showToast("Thiết bị này chưa đổi được camera trong cuộc gọi.");
+  }
 }
 
 async function endCall(shouldSignal) {

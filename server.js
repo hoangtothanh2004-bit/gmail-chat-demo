@@ -30,6 +30,7 @@ const mimeTypes = {
 const sessions = new Map();
 const eventClients = new Map();
 const storyLifetimeMs = 24 * 60 * 60 * 1000;
+const maxJsonBodyBytes = 12_500_000;
 
 let db = loadDb();
 
@@ -413,7 +414,7 @@ function readJson(req) {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1_000_000) {
+      if (raw.length > maxJsonBodyBytes) {
         req.destroy();
         reject(new Error("Body too large"));
       }
@@ -609,6 +610,20 @@ function validateAvatarUrl(value) {
   return avatarUrl;
 }
 
+function validateStoryMediaUrl(value) {
+  const mediaUrl = String(value || "").trim();
+  if (!mediaUrl) return "";
+  if (mediaUrl.length > 12_000_000) throw new Error("File story quá lớn. Vui lòng chọn ảnh hoặc video nhỏ hơn.");
+  if (
+    !/^https?:\/\//i.test(mediaUrl) &&
+    !mediaUrl.startsWith("data:image/") &&
+    !mediaUrl.startsWith("data:video/")
+  ) {
+    throw new Error("Story cần là ảnh hoặc video hợp lệ.");
+  }
+  return mediaUrl;
+}
+
 async function handleApi(req, res, url) {
   try {
     if (req.method === "POST" && url.pathname === "/api/register") {
@@ -793,7 +808,7 @@ async function handleApi(req, res, url) {
       const type = body.type === "story" ? "story" : "note";
       let mediaUrl = "";
       try {
-        mediaUrl = validateAvatarUrl(body.mediaUrl || "");
+        mediaUrl = validateStoryMediaUrl(body.mediaUrl || "");
       } catch (error) {
         return sendJson(res, 400, { error: error.message });
       }

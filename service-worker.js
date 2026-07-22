@@ -1,9 +1,9 @@
-const CACHE_NAME = "gmail-chat-demo-v20260722-feed-story-tab";
+const CACHE_NAME = "gmail-chat-demo-v20260722-video-story-camera-avatar";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20260722-feed-story-tab",
-  "/app.js?v=20260722-feed-story-tab",
+  "/styles.css?v=20260722-video-story-camera-avatar",
+  "/app.js?v=20260722-video-story-camera-avatar",
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/icon-192.png",
