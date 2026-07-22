@@ -55,8 +55,12 @@ function normalizeDb(data) {
   next.users.forEach((user) => {
     user.name ||= user.email?.split("@")[0] || "User";
     user.avatarUrl ||= "";
+    user.coverUrl ||= "";
     user.theme ||= "light";
     user.about ||= "";
+    user.birthday ||= "";
+    user.gender ||= "";
+    user.hometown ||= "";
     user.createdAt ||= new Date().toISOString();
   });
 
@@ -75,6 +79,7 @@ function normalizeDb(data) {
   next.messages.forEach((message) => {
     message.type ||= "text";
     message.createdAt ||= new Date().toISOString();
+    if (message.type === "call") message.call ||= {};
   });
 
   next.tasks.forEach((task) => {
@@ -236,8 +241,12 @@ function createUser(name, email, password) {
     name,
     email: email.toLowerCase(),
     avatarUrl: "",
+    coverUrl: "",
     theme: "light",
     about: "",
+    birthday: "",
+    gender: "",
+    hometown: "",
     passwordHash: hashPassword(password),
     createdAt: new Date().toISOString()
   };
@@ -258,14 +267,31 @@ function isGmail(email) {
 }
 
 function publicUser(user) {
-  if (!user) return { id: "", name: "Unknown", email: "", avatar: "?", avatarUrl: "", about: "" };
+  if (!user) {
+    return {
+      id: "",
+      name: "Unknown",
+      email: "",
+      avatar: "?",
+      avatarUrl: "",
+      coverUrl: "",
+      about: "",
+      birthday: "",
+      gender: "",
+      hometown: ""
+    };
+  }
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     avatar: initials(user.name || user.email),
     avatarUrl: user.avatarUrl || "",
-    about: user.about || ""
+    coverUrl: user.coverUrl || "",
+    about: user.about || "",
+    birthday: user.birthday || "",
+    gender: user.gender || "",
+    hometown: user.hometown || ""
   };
 }
 
@@ -524,7 +550,7 @@ function canSeeProfile(viewerId, targetId) {
 function validateAvatarUrl(value) {
   const avatarUrl = String(value || "").trim();
   if (!avatarUrl) return "";
-  if (avatarUrl.length > 900_000) throw new Error("Ảnh đại diện quá lớn. Vui lòng chọn ảnh nhỏ hơn.");
+  if (avatarUrl.length > 1_500_000) throw new Error("Ảnh quá lớn. Vui lòng chọn ảnh nhỏ hơn.");
   if (!/^https?:\/\//i.test(avatarUrl) && !avatarUrl.startsWith("data:image/")) {
     throw new Error("Ảnh đại diện cần là URL http/https hoặc data image.");
   }
@@ -669,8 +695,10 @@ async function handleApi(req, res, url) {
       if (!name) return sendJson(res, 400, { error: "Tên hiển thị không được rỗng." });
 
       let avatarUrl = session.user.avatarUrl || "";
+      let coverUrl = session.user.coverUrl || "";
       try {
         avatarUrl = validateAvatarUrl(body.avatarUrl ?? session.user.avatarUrl);
+        coverUrl = validateAvatarUrl(body.coverUrl ?? session.user.coverUrl);
       } catch (error) {
         return sendJson(res, 400, { error: error.message });
       }
@@ -679,6 +707,10 @@ async function handleApi(req, res, url) {
       session.user.name = name.slice(0, 80);
       session.user.about = String(body.about ?? session.user.about ?? "").trim().slice(0, 160);
       session.user.avatarUrl = avatarUrl;
+      session.user.coverUrl = coverUrl;
+      session.user.birthday = String(body.birthday ?? session.user.birthday ?? "").trim().slice(0, 40);
+      session.user.gender = String(body.gender ?? session.user.gender ?? "").trim().slice(0, 40);
+      session.user.hometown = String(body.hometown ?? session.user.hometown ?? "").trim().slice(0, 80);
       session.user.theme = theme;
       saveDb();
 
@@ -970,6 +1002,59 @@ async function handleApi(req, res, url) {
       saveDb();
       pushConversationRefresh(conversation, "task-created", session.user.id);
       return sendJson(res, 201, { task: publicTask(task) });
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/call-record")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const conversationId = url.pathname.split("/")[3];
+      const conversation = db.conversations.find((item) => item.id === conversationId);
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
+      }
+
+      const body = await readJson(req);
+      const callId = String(body.callId || "").trim();
+      if (!callId) return sendJson(res, 400, { error: "Thiếu mã cuộc gọi." });
+
+      const existing = db.messages.find(
+        (message) => message.conversationId === conversation.id && message.type === "call" && message.call?.callId === callId
+      );
+      if (existing) {
+        return sendJson(res, 200, { message: { ...existing, sender: publicUser(db.users.find((user) => user.id === existing.senderId)) } });
+      }
+
+      const mode = body.mode === "video" ? "video" : "audio";
+      const startedBy = conversation.participantIds.includes(String(body.startedBy || "")) ? String(body.startedBy) : session.user.id;
+      const startedAt = body.startedAt ? new Date(body.startedAt) : new Date();
+      const endedAt = body.endedAt ? new Date(body.endedAt) : new Date();
+      const computedDuration = Math.round((endedAt - startedAt) / 1000);
+      const requestedDuration = Number(body.durationSeconds);
+      const durationSeconds = Math.max(
+        0,
+        Math.min(24 * 60 * 60, Number.isFinite(requestedDuration) ? Math.round(requestedDuration) : computedDuration)
+      );
+      const message = {
+        id: createId("msg"),
+        conversationId,
+        senderId: session.user.id,
+        text: mode === "video" ? "Cuộc gọi video" : "Cuộc gọi thoại",
+        type: "call",
+        call: {
+          callId,
+          mode,
+          startedBy,
+          endedBy: session.user.id,
+          startedAt: Number.isNaN(startedAt.getTime()) ? new Date().toISOString() : startedAt.toISOString(),
+          endedAt: Number.isNaN(endedAt.getTime()) ? new Date().toISOString() : endedAt.toISOString(),
+          durationSeconds
+        },
+        createdAt: new Date().toISOString()
+      };
+      db.messages.push(message);
+      saveDb();
+      pushConversationRefresh(conversation, "call-recorded", session.user.id);
+      return sendJson(res, 201, { message: { ...message, sender: publicUser(session.user) } });
     }
 
     if (req.method === "PATCH" && url.pathname.startsWith("/api/tasks/")) {

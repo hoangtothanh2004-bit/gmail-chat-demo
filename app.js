@@ -25,12 +25,14 @@ let ringtoneTimer = null;
 let lastMessageSoundAt = 0;
 let deferredInstallPrompt = null;
 let mobileListOpen = false;
+let notificationPermissionAsked = false;
 
 const rtcConfig = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 };
 
-const messageSoundReasons = new Set(["message", "task-created", "friend-request", "friend-accepted", "group-created"]);
+const messageSoundReasons = new Set(["message", "task-created", "friend-request", "friend-accepted", "group-created", "call-recorded"]);
+const chatIcons = ["👍", "❤️", "😂", "😊", "😍", "🙏", "🎉", "🔥", "😮", "😭", "👏", "✅", "💪", "🌹", "⭐", "💯"];
 
 function $(selector) {
   return document.querySelector(selector);
@@ -69,6 +71,42 @@ function formatTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatProfileDate(value) {
+  if (!value) return "Chưa cập nhật";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(date);
+}
+
+function formatCallDuration(seconds = 0) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainingSeconds = total % 60;
+  if (hours) return `${hours} giờ ${minutes} phút ${remainingSeconds} giây`;
+  return `${minutes} phút ${remainingSeconds} giây`;
+}
+
+function callDirection(message) {
+  return message?.call?.startedBy === currentUser?.id ? "outgoing" : "incoming";
+}
+
+function callTitle(message) {
+  const isVideo = message?.call?.mode === "video";
+  const direction = callDirection(message) === "outgoing" ? "đi" : "đến";
+  return `${isVideo ? "Cuộc gọi video" : "Cuộc gọi thoại"} ${direction}`;
+}
+
+function messagePreview(message) {
+  if (!message) return "";
+  if (message.type === "call") return callTitle(message);
+  return message.text || "";
 }
 
 function renderAvatar(entity, extraClass = "") {
@@ -117,6 +155,28 @@ async function resizeAvatarFile(file) {
   return canvas.toDataURL("image/jpeg", 0.86);
 }
 
+async function resizeCoverFile(file) {
+  if (!file) return "";
+  if (!file.type.startsWith("image/")) throw new Error("Vui lòng chọn đúng file ảnh bìa.");
+  if (file.size > 8 * 1024 * 1024) throw new Error("Ảnh bìa quá lớn. Vui lòng chọn ảnh dưới 8MB.");
+
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const width = 1200;
+  const height = 430;
+  const scale = Math.max(width / image.width, height / image.height);
+  const scaledWidth = image.width * scale;
+  const scaledHeight = image.height * scale;
+  const offsetX = Math.round((width - scaledWidth) / 2);
+  const offsetY = Math.round((height - scaledHeight) / 2);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(image, offsetX, offsetY, scaledWidth, scaledHeight);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 async function api(path, options = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -142,6 +202,21 @@ function showToast(message) {
   window.setTimeout(() => toast.remove(), 2800);
 }
 
+function prepareNotifications() {
+  if (!("Notification" in window) || notificationPermissionAsked || Notification.permission !== "default") return;
+  notificationPermissionAsked = true;
+  Notification.requestPermission().catch(() => {});
+}
+
+function showDeviceNotification(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try {
+    new Notification(title, { body, tag: "gmail-chat-call" });
+  } catch {
+    // Browser notifications are optional; the in-app call panel still appears.
+  }
+}
+
 function getAudioContext() {
   const Context = window.AudioContext || window.webkitAudioContext;
   if (!Context) return null;
@@ -153,6 +228,11 @@ function unlockAudio() {
   const context = getAudioContext();
   if (!context || context.state !== "suspended") return;
   context.resume().catch(() => {});
+}
+
+function unlockInteractions() {
+  unlockAudio();
+  prepareNotifications();
 }
 
 function playTone(frequency, duration, delay = 0, volume = 0.045, type = "sine") {
@@ -640,7 +720,7 @@ function renderGroupsList() {
 function renderConversationList() {
   const query = searchText.trim().toLowerCase();
   const list = conversations.filter((item) => {
-    const haystack = `${item.peer.name} ${item.peer.email} ${item.lastMessage?.text || ""}`.toLowerCase();
+    const haystack = `${item.peer.name} ${item.peer.email} ${messagePreview(item.lastMessage)}`.toLowerCase();
     return haystack.includes(query);
   });
   if (!list.length) return `<div class="empty-state">Chưa có cuộc trò chuyện nào.</div>`;
@@ -652,10 +732,10 @@ function renderConversationButton(item) {
   const openTasks = item.taskSummary?.open || 0;
   return `
     <button class="conversation ${item.id === activeConversationId ? "active" : ""}" data-conversation="${escapeAttr(item.id)}">
-      ${renderAvatar(item.peer)}
+        ${renderAvatar(item.peer)}
       <div>
         <strong>${escapeHtml(item.peer.name)}</strong>
-        <p>${escapeHtml(item.pinnedMessage ? `Ghim: ${item.pinnedMessage.text}` : last ? last.text : item.peer.email)}</p>
+        <p>${escapeHtml(item.pinnedMessage ? `Ghim: ${messagePreview(item.pinnedMessage)}` : last ? messagePreview(last) : item.peer.email)}</p>
       </div>
       <div>
         <span class="time">${escapeHtml(formatTime(last?.createdAt))}</span>
@@ -735,8 +815,12 @@ function renderChat(active) {
       ${messages.map((message) => renderMessage(message)).join("")}
     </div>
 
+    <div class="icon-tray hidden" id="iconTray" aria-label="Chọn icon nhắn tin">
+      ${chatIcons.map((icon) => `<button type="button" class="icon-choice" data-chat-icon="${escapeAttr(icon)}">${escapeHtml(icon)}</button>`).join("")}
+    </div>
+
     <form class="composer" id="messageForm">
-      <button class="tool-btn" type="button" id="emojiBtn" title="Biểu cảm">:)</button>
+      <button class="tool-btn" type="button" id="emojiBtn" title="Chọn icon">☺</button>
       <textarea id="messageInput" rows="1" placeholder="Nhập tin nhắn..."></textarea>
       <button class="send-btn" title="Gửi" type="submit">Gửi</button>
     </form>
@@ -747,14 +831,16 @@ function renderPinnedMessage(message) {
   return `
     <div class="pinned-bar">
       <strong>Đã ghim</strong>
-      <span>${escapeHtml(message.text)}</span>
+      <span>${escapeHtml(messagePreview(message))}</span>
       <button class="mini-action ghost" id="unpinBtn">Bỏ ghim</button>
     </div>
   `;
 }
 
 function renderMessage(message) {
-  const isMe = message.senderId === currentUser.id;
+  const isCallMessage = message.type === "call";
+  const isMe = isCallMessage ? callDirection(message) === "outgoing" : message.senderId === currentUser.id;
+  if (isCallMessage) return renderCallHistoryMessage(message, isMe);
   return `
     <div class="message ${isMe ? "me" : ""} ${message.type === "system" || message.type === "task" ? "system-message" : ""}">
       ${renderAvatar(message.sender || { avatar: "?" })}
@@ -762,6 +848,23 @@ function renderMessage(message) {
         <p>${escapeHtml(message.text)}</p>
         <time>${escapeHtml(formatTime(message.createdAt))}</time>
         <button class="pin-message-btn" data-pin-message="${escapeAttr(message.id)}">${message.isPinned ? "Đang ghim" : "Ghim"}</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderCallHistoryMessage(message, isMe) {
+  const duration = formatCallDuration(message.call?.durationSeconds || 0);
+  const isOutgoing = callDirection(message) === "outgoing";
+  const mode = message.call?.mode === "video" ? "video" : "audio";
+  return `
+    <div class="message call-message ${isMe ? "me" : ""}">
+      ${renderAvatar(message.sender || { avatar: "?" })}
+      <div class="call-history-card">
+        <strong>${escapeHtml(callTitle(message))}</strong>
+        <p><span class="call-history-icon ${isOutgoing ? "outgoing" : "incoming"}">${isOutgoing ? "↗" : "↙"}</span>${escapeHtml(duration)}</p>
+        <button type="button" data-call-again="${escapeAttr(mode)}">Gọi lại</button>
+        <time>${escapeHtml(formatTime(message.createdAt))}</time>
       </div>
     </div>
   `;
@@ -914,78 +1017,203 @@ function renderTaskModal() {
   `;
 }
 
-function renderSettingsModal() {
+function profileValue(value) {
+  return value ? String(value) : "Chưa cập nhật";
+}
+
+function renderProfileInfoRow(label, value) {
   return `
-    <div class="modal-layer">
-      <form class="modal-panel settings-panel" id="settingsForm">
-        <header>
-          <h2>Cá nhân</h2>
-          <button type="button" class="modal-close" data-close-modal>x</button>
-        </header>
-        <details class="profile-dropdown">
-          <summary class="profile-preview profile-trigger">
-            ${renderAvatar(currentUser)}
-            <div>
-              <strong>${escapeHtml(currentUser.name)}</strong>
-              <p>${escapeHtml(currentUser.email)} - ${friends.length} bạn bè</p>
-              <span>Bấm để chỉnh sửa hồ sơ</span>
-            </div>
-            <i aria-hidden="true"></i>
-          </summary>
-          <div class="profile-edit-panel">
-            <div class="field">
-              <label>Tên hiển thị</label>
-              <input name="name" value="${escapeAttr(currentUser.name)}">
-            </div>
-            <input name="avatarUrl" type="hidden" value="${escapeAttr(currentUser.avatarUrl || "")}">
-            <div class="field">
-              <label>Ảnh đại diện</label>
-              <input name="avatarFile" type="file" accept="image/*">
-              <p class="field-hint">Ảnh sẽ được tự cắt vuông và nén trước khi lưu.</p>
-            </div>
-            <div class="field">
-              <label>Giới thiệu</label>
-              <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
-            </div>
-          </div>
-        </details>
-        <details class="settings-section theme-dropdown">
-          <summary class="settings-heading">
-            <strong>Cài đặt giao diện</strong>
-            <p>Chọn độ sáng phù hợp với cách bạn sử dụng ứng dụng.</p>
-            <i aria-hidden="true"></i>
-          </summary>
-          <div class="theme-options">
-            ${[
-              ["light", "Sáng", "Nền trắng, chữ đậm dễ đọc"],
-              ["dark", "Tối", "Nền tối dịu mắt khi dùng ban đêm"],
-              ["system", "Hệ thống", "Tự đổi theo thiết bị"]
-            ]
-              .map(
-                ([theme, label, note]) => `
-                  <label class="theme-option">
-                    <input type="radio" name="theme" value="${theme}" ${currentUser.theme === theme ? "checked" : ""}>
-                    <span>
-                      <strong>${label}</strong>
-                      <small>${note}</small>
-                    </span>
-                  </label>
-                `
-              )
-              .join("")}
-          </div>
-        </details>
-        <div class="install-box">
+    <div class="profile-info-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      <i aria-hidden="true">✎</i>
+    </div>
+  `;
+}
+
+function renderRecentActivities() {
+  const recent = [];
+  const lastConversation = conversations.find((item) => item.lastMessage);
+  if (lastConversation) {
+    recent.push({
+      avatar: lastConversation.peer,
+      title: `${lastConversation.peer.name} có hoạt động mới.`,
+      text: messagePreview(lastConversation.lastMessage)
+    });
+  }
+  const activeTask = tasks.find((task) => task.status !== "done") || tasks[0];
+  if (activeTask) {
+    recent.push({
+      avatar: activeTask.assignee || currentUser,
+      title: `${activeTask.assignee?.name || currentUser.name} đang có công việc.`,
+      text: activeTask.title
+    });
+  }
+  if (!recent.length) {
+    recent.push({
+      avatar: currentUser,
+      title: `${currentUser.name} đã tạo tài khoản.`,
+      text: "Bắt đầu kết bạn và trò chuyện bằng Gmail."
+    });
+  }
+
+  return recent
+    .slice(0, 2)
+    .map(
+      (item) => `
+        <div class="activity-row">
+          ${renderAvatar(item.avatar)}
           <div>
-            <strong>Cài đặt ứng dụng</strong>
-            <p>${isStandaloneApp() ? "Bạn đang mở bằng bản đã cài." : "Cài app vào màn hình chính hoặc máy tính để mở nhanh hơn."}</p>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.text)}</p>
           </div>
-          <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
         </div>
-        <div class="settings-actions">
-          <button class="primary-btn" type="submit">Lưu thay đổi</button>
-          <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
-        </div>
+      `
+    )
+    .join("");
+}
+
+function renderSettingsModal() {
+  const coverStyle = currentUser.coverUrl
+    ? ` style="background-image: linear-gradient(180deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.22)), url('${escapeAttr(currentUser.coverUrl)}')"`
+    : "";
+  const friendPreview = friends.slice(0, 8);
+  const mediaPreview = [currentUser, ...friends].slice(0, 5);
+
+  return `
+    <div class="modal-layer profile-modal-layer">
+      <form class="modal-panel settings-panel profile-page-panel" id="settingsForm">
+        <header class="profile-page-top">
+          <button type="button" class="profile-close-btn" data-close-modal aria-label="Đóng">×</button>
+          <h2>Trang cá nhân</h2>
+        </header>
+
+        <input name="avatarUrl" type="hidden" value="${escapeAttr(currentUser.avatarUrl || "")}">
+        <input name="coverUrl" type="hidden" value="${escapeAttr(currentUser.coverUrl || "")}">
+
+        <section class="profile-page">
+          <div class="profile-cover"${coverStyle}>
+            <label class="cover-upload">
+              <input name="coverFile" type="file" accept="image/*">
+              <span>Thay đổi ảnh bìa</span>
+            </label>
+          </div>
+
+          <div class="profile-identity">
+            <label class="profile-avatar-upload">
+              ${renderAvatar(currentUser)}
+              <input name="avatarFile" type="file" accept="image/*">
+              <span>Thay đổi ảnh đại diện</span>
+            </label>
+            <div class="profile-name-row">
+              <div>
+                <h3>${escapeHtml(currentUser.name)}</h3>
+                <p>${escapeHtml(currentUser.about || "Thêm giới thiệu cho trang cá nhân của bạn.")}</p>
+              </div>
+              <details class="profile-edit-dropdown">
+                <summary>Chỉnh sửa thông tin</summary>
+                <div class="profile-edit-panel">
+                  <div class="field">
+                    <label>Tên hiển thị</label>
+                    <input name="name" value="${escapeAttr(currentUser.name)}">
+                  </div>
+                  <div class="field">
+                    <label>Giới thiệu</label>
+                    <textarea name="about" rows="3">${escapeHtml(currentUser.about || "")}</textarea>
+                  </div>
+                  <div class="field">
+                    <label>Ngày sinh</label>
+                    <input name="birthday" type="date" value="${escapeAttr(currentUser.birthday || "")}">
+                  </div>
+                  <div class="field">
+                    <label>Giới tính</label>
+                    <select name="gender">
+                      ${["", "Nam", "Nữ", "Khác"]
+                        .map((gender) => `<option value="${escapeAttr(gender)}" ${currentUser.gender === gender ? "selected" : ""}>${gender || "Chưa cập nhật"}</option>`)
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Quê quán</label>
+                    <input name="hometown" value="${escapeAttr(currentUser.hometown || "")}" placeholder="Ví dụ: Phú Thọ">
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <section class="profile-block">
+            <h3>Thông tin cơ bản</h3>
+            ${renderProfileInfoRow("Ngày sinh", formatProfileDate(currentUser.birthday))}
+            ${renderProfileInfoRow("Giới tính", profileValue(currentUser.gender))}
+            ${renderProfileInfoRow("Quê quán", profileValue(currentUser.hometown))}
+          </section>
+
+          <section class="profile-block">
+            <h3>Hoạt động gần đây</h3>
+            ${renderRecentActivities()}
+          </section>
+
+          <section class="profile-block profile-friends-block">
+            <div class="profile-block-title">
+              <h3>Bạn bè</h3>
+              <button type="button" class="mini-action ghost" id="profileFriendsBtn">Xem tất cả</button>
+            </div>
+            <div class="friend-strip">
+              ${friendPreview.length ? friendPreview.map((friend) => `<span>${renderAvatar(friend)}<i></i></span>`).join("") : `<p>Chưa có bạn bè.</p>`}
+            </div>
+          </section>
+
+          <section class="profile-block">
+            <div class="profile-block-title">
+              <h3>Ảnh & Video</h3>
+              <span>${mediaPreview.length} mục</span>
+            </div>
+            <div class="media-grid">
+              ${mediaPreview.map((item, index) => `<div class="media-tile">${renderAvatar(item)}${index % 2 ? "<b>▶</b>" : ""}</div>`).join("")}
+            </div>
+          </section>
+
+          <details class="settings-section theme-dropdown">
+            <summary class="settings-heading">
+              <strong>Cài đặt giao diện</strong>
+              <p>Chọn độ sáng phù hợp với cách bạn sử dụng ứng dụng.</p>
+              <i aria-hidden="true"></i>
+            </summary>
+            <div class="theme-options">
+              ${[
+                ["light", "Sáng", "Nền trắng, chữ đậm dễ đọc"],
+                ["dark", "Tối", "Nền tối dịu mắt khi dùng ban đêm"],
+                ["system", "Hệ thống", "Tự đổi theo thiết bị"]
+              ]
+                .map(
+                  ([theme, label, note]) => `
+                    <label class="theme-option">
+                      <input type="radio" name="theme" value="${theme}" ${currentUser.theme === theme ? "checked" : ""}>
+                      <span>
+                        <strong>${label}</strong>
+                        <small>${note}</small>
+                      </span>
+                    </label>
+                  `
+                )
+                .join("")}
+            </div>
+          </details>
+
+          <div class="install-box">
+            <div>
+              <strong>Cài đặt ứng dụng</strong>
+              <p>${isStandaloneApp() ? "Bạn đang mở bằng bản đã cài." : "Cài app vào màn hình chính hoặc máy tính để mở nhanh hơn."}</p>
+            </div>
+            <button class="mini-action ghost" type="button" id="installAppBtn">${isStandaloneApp() ? "Đã cài" : "Cài ứng dụng"}</button>
+          </div>
+
+          <div class="settings-actions">
+            <button class="primary-btn" type="submit">Lưu thay đổi</button>
+            <button class="muted-btn danger-text settings-logout" type="button" id="settingsLogoutBtn">Đăng xuất</button>
+          </div>
+        </section>
       </form>
     </div>
   `;
@@ -1187,6 +1415,12 @@ function bindAppEvents() {
     modal = "settings";
     renderApp();
   });
+  $("#profileFriendsBtn")?.addEventListener("click", () => {
+    modal = null;
+    activeTab = "friends";
+    mobileListOpen = true;
+    renderApp();
+  });
   $("#mobileBackBtn")?.addEventListener("click", () => {
     activeTab = "messages";
     mobileListOpen = true;
@@ -1195,6 +1429,9 @@ function bindAppEvents() {
   $("#unpinBtn")?.addEventListener("click", unpinMessage);
   $("#audioCallBtn")?.addEventListener("click", () => startCall("audio"));
   $("#videoCallBtn")?.addEventListener("click", startVideoCall);
+  document.querySelectorAll("[data-call-again]").forEach((button) => {
+    button.addEventListener("click", () => startCall(button.dataset.callAgain || "audio"));
+  });
   $("#acceptCallBtn")?.addEventListener("click", acceptIncomingCall);
   $("#rejectCallBtn")?.addEventListener("click", rejectIncomingCall);
   $("#endCallBtn")?.addEventListener("click", () => endCall(true));
@@ -1209,9 +1446,20 @@ function bindAppEvents() {
   $("#installAppBtn")?.addEventListener("click", installApp);
   $("#settingsLogoutBtn")?.addEventListener("click", logout);
   $("#emojiBtn")?.addEventListener("click", () => {
-    const input = $("#messageInput");
-    input.value = `${input.value} :)`.trimStart();
-    input.focus();
+    $("#iconTray")?.classList.toggle("hidden");
+    $("#messageInput")?.focus();
+  });
+  document.querySelectorAll("[data-chat-icon]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = $("#messageInput");
+      if (!input) return;
+      const icon = button.dataset.chatIcon || "";
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      input.value = `${input.value.slice(0, start)}${icon}${input.value.slice(end)}`;
+      input.focus();
+      input.setSelectionRange(start + icon.length, start + icon.length);
+    });
   });
   document.querySelectorAll("[data-close-modal]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1325,14 +1573,20 @@ async function saveSettings(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const avatarFile = form.get("avatarFile");
+  const coverFile = form.get("coverFile");
   try {
     const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : form.get("avatarUrl");
+    const coverUrl = coverFile instanceof File && coverFile.size ? await resizeCoverFile(coverFile) : form.get("coverUrl");
     const data = await api("/api/me", {
       method: "PATCH",
       body: {
         name: form.get("name"),
         avatarUrl,
+        coverUrl,
         about: form.get("about"),
+        birthday: form.get("birthday"),
+        gender: form.get("gender"),
+        hometown: form.get("hometown"),
         theme: form.get("theme")
       }
     });
@@ -1468,6 +1722,7 @@ function createPeerConnection(conversationId, callId, remoteUser) {
     if (!peer) return;
     peer.remoteStream = event.streams[0] || peer.remoteStream || new MediaStream();
     if (!event.streams[0] && event.track) peer.remoteStream.addTrack(event.track);
+    callState.connectedAt ||= Date.now();
     peer.status = "Đang trong cuộc gọi";
     callState.status = "Đang trong cuộc gọi";
     renderApp();
@@ -1476,6 +1731,7 @@ function createPeerConnection(conversationId, callId, remoteUser) {
     const peer = callState?.callId === callId ? callState.peers?.[remoteUser.id] : null;
     if (!peer) return;
     if (peerConnection.connectionState === "connected") {
+      callState.connectedAt ||= Date.now();
       peer.status = "Đang trong cuộc gọi";
       callState.status = "Đang trong cuộc gọi";
     }
@@ -1552,10 +1808,14 @@ async function startCall(mode = "video") {
       localStream,
       peers: {},
       status: active.type === "group" ? "Đang gọi nhóm..." : "Đang gọi...",
+      startedAt: Date.now(),
+      connectedAt: 0,
+      recorded: false,
       micEnabled: true,
       cameraEnabled: !isAudioCall
     };
     renderApp();
+    showToast(callState.title);
     for (const member of remoteMembers) {
       await sendOfferToUser(member);
     }
@@ -1599,6 +1859,9 @@ async function handleCallSignal(signal) {
         pendingCandidates: {}
       };
       startRingtone();
+      const callKind = incomingCall.mode === "audio" ? "cuộc gọi thoại" : "cuộc gọi video";
+      showToast(`${signal.from.name} đang gọi ${callKind}.`);
+      showDeviceNotification("Có cuộc gọi đến", `${signal.from.name} đang gọi ${callKind}.`);
     }
     incomingCall.mode = incomingCall.mode || signal.payload.mode || "video";
     incomingCall.offers[signal.from.id] = signal.payload.description;
@@ -1658,7 +1921,13 @@ async function handleCallSignal(signal) {
   if (signal.type === "hangup") {
     removeCallPeer(signal.from?.id);
     showToast(`${signal.from?.name || "Một thành viên"} đã rời cuộc gọi.`);
-    if (!getCallPeers().length || callState.conversationType !== "group") cleanupCall();
+    if (!getCallPeers().length || callState.conversationType !== "group") {
+      const previous = callState;
+      cleanupCall();
+      renderApp();
+      await recordCallHistory(previous);
+      return;
+    }
     renderApp();
   }
 }
@@ -1704,6 +1973,9 @@ async function acceptIncomingCall() {
       localStream,
       peers: {},
       status: "Đang kết nối...",
+      startedAt: Date.now(),
+      connectedAt: 0,
+      recorded: false,
       micEnabled: true,
       cameraEnabled: !isAudioCall
     };
@@ -1794,6 +2066,34 @@ async function endCall(shouldSignal) {
   if (shouldSignal && previous) await sendCallSignal(previous.conversationId, "hangup", {}, previous.callId).catch(() => {});
   cleanupCall();
   renderApp();
+  await recordCallHistory(previous);
+}
+
+async function recordCallHistory(previous) {
+  if (!previous || previous.recorded || !previous.conversationId || !previous.callId) return;
+  previous.recorded = true;
+  const endedAt = Date.now();
+  const startedAt = previous.connectedAt || previous.startedAt || endedAt;
+  const durationSeconds = previous.connectedAt ? Math.max(0, Math.round((endedAt - startedAt) / 1000)) : 0;
+  try {
+    await api(`/api/conversations/${previous.conversationId}/call-record`, {
+      method: "POST",
+      body: {
+        callId: previous.callId,
+        mode: previous.mode || "audio",
+        startedBy: previous.hostId || currentUser.id,
+        startedAt: new Date(startedAt).toISOString(),
+        endedAt: new Date(endedAt).toISOString(),
+        durationSeconds
+      }
+    });
+    await refreshData({ keepMessages: true });
+    if (activeConversationId) await loadMessages(activeConversationId);
+    renderApp();
+    showDeviceNotification("Cuộc gọi đã kết thúc", `${previous.title || "Cuộc gọi"} - ${formatCallDuration(durationSeconds)}`);
+  } catch {
+    showToast("Chưa ghi được lịch sử cuộc gọi.");
+  }
 }
 
 function removeCallPeer(userId) {
@@ -1869,7 +2169,7 @@ function registerServiceWorker() {
 }
 
 ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-  window.addEventListener(eventName, unlockAudio, { passive: true });
+  window.addEventListener(eventName, unlockInteractions, { passive: true });
 });
 
 window.addEventListener("beforeinstallprompt", (event) => {
