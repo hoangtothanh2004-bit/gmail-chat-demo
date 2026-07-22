@@ -6,6 +6,7 @@ let conversations = [];
 let requests = [];
 let friends = [];
 let tasks = [];
+let stories = [];
 let messages = [];
 let conversationTasks = [];
 let activeConversationId = "";
@@ -31,7 +32,7 @@ const rtcConfig = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 };
 
-const messageSoundReasons = new Set(["message", "task-created", "friend-request", "friend-accepted", "group-created", "call-recorded"]);
+const messageSoundReasons = new Set(["message", "task-created", "friend-request", "friend-accepted", "group-created", "call-recorded", "story-created"]);
 const chatIcons = ["👍", "❤️", "😂", "😊", "😍", "🙏", "🎉", "🔥", "😮", "😭", "👏", "✅", "💪", "🌹", "⭐", "💯"];
 
 function $(selector) {
@@ -327,6 +328,7 @@ async function refreshData({ keepMessages = false } = {}) {
   requests = data.requests || [];
   friends = data.friends || [];
   tasks = data.tasks || [];
+  stories = data.stories || [];
   localStorage.setItem("gmail-chat-theme", currentUser.theme || "light");
   applyTheme();
 
@@ -717,14 +719,43 @@ function renderGroupsList() {
   return groups.map((item) => renderConversationButton(item)).join("");
 }
 
+function renderStoriesStrip() {
+  const visibleStories = (stories || []).slice(0, 10);
+  return `
+    <section class="stories-strip" aria-label="Ghi chú và story 24 giờ">
+      <button class="story-add" id="newStoryBtn" type="button">
+        <span>+</span>
+        <strong>Đăng 24 giờ</strong>
+      </button>
+      ${visibleStories
+        .map(
+          (story) => `
+            <article class="story-chip ${story.type === "story" ? "story-photo" : "story-note"}"${story.mediaUrl ? ` style="background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.58), rgba(37, 99, 235, 0.46)), url('${escapeAttr(story.mediaUrl)}')"` : ""}>
+              ${renderAvatar(story.author || { avatar: "?" })}
+              <div>
+                <strong>${escapeHtml(story.author?.name || "Bạn bè")}</strong>
+                <p>${escapeHtml(story.text || (story.type === "story" ? "Story mới" : "Ghi chú mới"))}</p>
+                <small>Tự mất sau 24 giờ · ${escapeHtml(formatTime(story.createdAt))}</small>
+              </div>
+              ${story.userId === currentUser.id ? `<button class="story-delete" title="Xóa" type="button" data-delete-story="${escapeAttr(story.id)}">×</button>` : ""}
+            </article>
+          `
+        )
+        .join("")}
+    </section>
+  `;
+}
+
 function renderConversationList() {
   const query = searchText.trim().toLowerCase();
   const list = conversations.filter((item) => {
     const haystack = `${item.peer.name} ${item.peer.email} ${messagePreview(item.lastMessage)}`.toLowerCase();
     return haystack.includes(query);
   });
-  if (!list.length) return `<div class="empty-state">Chưa có cuộc trò chuyện nào.</div>`;
-  return list.map((item) => renderConversationButton(item)).join("");
+  const listHtml = list.length
+    ? list.map((item) => renderConversationButton(item)).join("")
+    : `<div class="empty-state">Chưa có cuộc trò chuyện nào.</div>`;
+  return `${renderStoriesStrip()}${listHtml}`;
 }
 
 function renderConversationButton(item) {
@@ -792,10 +823,16 @@ function renderFriendAction(user) {
 }
 
 function renderChat(active) {
+  const personAction = active.type === "group"
+    ? `data-group-options="${escapeAttr(active.id)}"`
+    : `data-profile="${escapeAttr(active.peer.id)}"`;
+  const messagesStyle = active.backgroundUrl
+    ? ` style="background-image: linear-gradient(180deg, rgba(239, 246, 255, 0.72), rgba(239, 246, 255, 0.86)), url('${escapeAttr(active.backgroundUrl)}')"`
+    : "";
   return `
     <header class="chat-header">
       <button class="mobile-back-btn" id="mobileBackBtn" title="Quay lại danh sách" type="button">‹</button>
-      <div class="person" data-profile="${active.type === "direct" ? escapeAttr(active.peer.id) : ""}">
+      <div class="person" ${personAction}>
         ${renderAvatar(active.peer)}
         <div>
           <strong>${escapeHtml(active.peer.name)}</strong>
@@ -810,7 +847,7 @@ function renderChat(active) {
 
     ${active.pinnedMessage ? renderPinnedMessage(active.pinnedMessage) : ""}
 
-    <div class="messages" id="messages">
+    <div class="messages" id="messages"${messagesStyle}>
       <div class="date-chip">Hôm nay</div>
       ${messages.map((message) => renderMessage(message)).join("")}
     </div>
@@ -955,6 +992,8 @@ function renderModalLayer() {
   if (profileModal) return renderProfileModal(profileModal);
   if (modal === "group") return renderGroupModal();
   if (modal === "task") return renderTaskModal();
+  if (modal === "story") return renderStoryModal();
+  if (modal === "groupOptions") return renderGroupOptionsModal();
   if (modal === "settings") return renderSettingsModal();
   return "";
 }
@@ -1016,6 +1055,150 @@ function renderTaskModal() {
           <textarea name="description" rows="3" placeholder="Nội dung, deadline, ghi chú..."></textarea>
         </div>
         <button class="primary-btn" type="submit">Giao việc</button>
+      </form>
+    </div>
+  `;
+}
+
+function renderStoryModal() {
+  return `
+    <div class="modal-layer">
+      <form class="modal-panel story-modal" id="storyForm">
+        <header>
+          <h2>Đăng ghi chú / story 24 giờ</h2>
+          <button type="button" class="modal-close" data-close-modal>←</button>
+        </header>
+        <div class="story-type-picker">
+          <label>
+            <input type="radio" name="type" value="note" checked>
+            <span>Ghi chú 24 giờ</span>
+          </label>
+          <label>
+            <input type="radio" name="type" value="story">
+            <span>Story 24 giờ</span>
+          </label>
+        </div>
+        <div class="field">
+          <label>Nội dung</label>
+          <textarea name="text" rows="4" maxlength="500" placeholder="Bạn đang nghĩ gì?"></textarea>
+        </div>
+        <div class="field">
+          <label>Ảnh story nếu muốn</label>
+          <input name="mediaFile" type="file" accept="image/*">
+          <p class="field-hint">Story và ghi chú sẽ tự mất sau 24 giờ.</p>
+        </div>
+        <button class="primary-btn" type="submit">Đăng 24 giờ</button>
+      </form>
+    </div>
+  `;
+}
+
+function renderGroupOptionsModal() {
+  const active = getActiveConversation();
+  if (!active || active.type !== "group") return "";
+  const availableFriends = friends.filter((friend) => !(active.members || []).some((member) => member.id === friend.id));
+  const groupLink = `${window.location.origin}/?group=${encodeURIComponent(active.id)}`;
+  return `
+    <div class="modal-layer group-options-layer">
+      <form class="modal-panel group-options-panel" id="groupOptionsForm">
+        <header class="group-options-nav">
+          <button type="button" class="modal-close back-style" data-close-modal aria-label="Quay lại">←</button>
+          <h2>Tùy chọn</h2>
+        </header>
+
+        <section class="group-options-hero">
+          <label class="group-avatar-edit">
+            ${renderAvatar(active.peer)}
+            <input name="groupAvatarFile" type="file" accept="image/*">
+            <span>📷</span>
+          </label>
+          <div class="group-title-edit">
+            <input name="name" value="${escapeAttr(active.name || active.peer.name)}" maxlength="80">
+            <small>${escapeHtml(active.peer.email)}</small>
+          </div>
+        </section>
+
+        <input name="avatarUrl" type="hidden" value="${escapeAttr(active.avatarUrl || active.peer.avatarUrl || "")}">
+        <input name="backgroundUrl" type="hidden" value="${escapeAttr(active.backgroundUrl || active.peer.backgroundUrl || "")}">
+
+        <section class="group-quick-actions">
+          <button type="button" data-group-search>
+            <span>⌕</span>
+            <strong>Tìm tin nhắn</strong>
+          </button>
+          <label>
+            <span>👥</span>
+            <strong>Thêm thành viên</strong>
+            <input class="hidden-file" name="memberPanelToggle" type="checkbox">
+          </label>
+          <label>
+            <span>🎨</span>
+            <strong>Đổi hình nền</strong>
+            <input class="hidden-file" name="groupBackgroundFile" type="file" accept="image/*">
+          </label>
+          <button type="button" data-group-notification>
+            <span>🔔</span>
+            <strong>Bật thông báo</strong>
+          </button>
+        </section>
+
+        <section class="group-option-section">
+          <label class="field">
+            <span>Thêm mô tả nhóm</span>
+            <textarea name="description" rows="2" maxlength="240" placeholder="Nhập mô tả nhóm...">${escapeHtml(active.description || "")}</textarea>
+          </label>
+        </section>
+
+        <section class="group-option-section">
+          <h3>Thêm thành viên</h3>
+          <div class="member-picker compact">
+            ${availableFriends.length
+              ? availableFriends
+                .map(
+                  (friend) => `
+                    <label class="check-row">
+                      <input type="checkbox" name="memberIds" value="${escapeAttr(friend.id)}">
+                      ${renderAvatar(friend)}
+                      <span>${escapeHtml(friend.name)}<small>${escapeHtml(friend.email)}</small></span>
+                    </label>
+                  `
+                )
+                .join("")
+              : `<p class="detail-copy">Tất cả bạn bè phù hợp đã ở trong nhóm.</p>`}
+          </div>
+        </section>
+
+        <section class="group-option-section">
+          <h3>Ảnh, file, link</h3>
+          <div class="group-media-strip">
+            ${(messages || []).slice(-4).map((message) => `<span>${escapeHtml(messagePreview(message)).slice(0, 24) || "Tin nhắn"}</span>`).join("")}
+            <button type="button" data-group-search>→</button>
+          </div>
+        </section>
+
+        <section class="group-option-list">
+          <button type="button" data-group-calendar><span>▦</span>Lịch nhóm</button>
+          <button type="button" data-group-pins><span>📌</span>Tin nhắn đã ghim</button>
+          <button type="button" data-group-poll><span>▥</span>Bình chọn</button>
+          <button type="button" data-group-members><span>👥</span>Xem thành viên (${(active.members || []).length})</button>
+          <button type="button" data-copy-group-link="${escapeAttr(groupLink)}"><span>🔗</span><em>Link nhóm</em><small>${escapeHtml(groupLink)}</small></button>
+        </section>
+
+        <section class="group-option-list">
+          <label><span>📌</span>Ghim trò chuyện<input type="checkbox"></label>
+          <label><span>◌</span>Ẩn trò chuyện<input type="checkbox"></label>
+          <button type="button" data-group-personal><span>⚙</span>Cài đặt cá nhân</button>
+        </section>
+
+        <section class="group-option-list danger-list">
+          <button type="button" data-group-report><span>!</span>Báo xấu</button>
+          <button type="button" data-group-storage><span>◴</span>Dung lượng trò chuyện</button>
+          <button type="button" class="danger-text" id="clearGroupHistoryBtn"><span>🗑</span>Xóa lịch sử trò chuyện</button>
+          <button type="button" class="danger-text" data-leave-group="${escapeAttr(active.id)}"><span>↪</span>Rời nhóm</button>
+          ${active.canManage ? `<button type="button" class="danger-text" data-delete-group="${escapeAttr(active.id)}"><span>×</span>Xóa nhóm</button>` : ""}
+        </section>
+
+        <button class="primary-btn group-save-btn" type="submit">Lưu tùy chọn nhóm</button>
       </form>
     </div>
   `;
@@ -1088,11 +1271,15 @@ function renderSettingsModal() {
     <div class="modal-layer profile-modal-layer">
       <form class="modal-panel settings-panel profile-page-panel" id="settingsForm">
         <header class="profile-page-top">
-          <button type="button" class="profile-close-btn" data-close-modal aria-label="Đóng">×</button>
+          <button type="button" class="profile-close-btn" data-close-modal aria-label="Quay lại">←</button>
           <h2>Trang cá nhân</h2>
-          <details class="profile-settings-menu">
+          <details class="profile-settings-menu" id="profileSettingsDetails">
             <summary aria-label="Mở cài đặt">⚙</summary>
             <div class="settings-menu-panel">
+              <div class="settings-menu-header">
+                <button type="button" id="profileSettingsBackBtn" aria-label="Quay lại trang cá nhân">←</button>
+                <strong>Cài đặt</strong>
+              </div>
               <section class="settings-menu-section">
                 <h3>Cài đặt thông tin</h3>
                 <div class="field">
@@ -1401,6 +1588,12 @@ function bindAppEvents() {
   document.querySelectorAll("[data-profile]").forEach((button) => {
     button.addEventListener("click", () => openProfile(button.dataset.profile));
   });
+  document.querySelectorAll("[data-group-options]").forEach((button) => {
+    button.addEventListener("click", () => {
+      modal = "groupOptions";
+      renderApp();
+    });
+  });
   document.querySelectorAll("[data-unfriend]").forEach((button) => {
     button.addEventListener("click", () => unfriend(button.dataset.unfriend));
   });
@@ -1433,6 +1626,10 @@ function bindAppEvents() {
   $("#searchBtn")?.addEventListener("click", searchUsers);
   $("#newGroupBtn")?.addEventListener("click", () => {
     modal = "group";
+    renderApp();
+  });
+  $("#newStoryBtn")?.addEventListener("click", () => {
+    modal = "story";
     renderApp();
   });
   $("#newTaskFromPanelBtn")?.addEventListener("click", openTaskModal);
@@ -1471,9 +1668,15 @@ function bindAppEvents() {
   $("#messageForm")?.addEventListener("submit", sendMessage);
   $("#groupForm")?.addEventListener("submit", createGroup);
   $("#taskForm")?.addEventListener("submit", createTask);
+  $("#storyForm")?.addEventListener("submit", createStory);
+  $("#groupOptionsForm")?.addEventListener("submit", saveGroupOptions);
   $("#settingsForm")?.addEventListener("submit", saveSettings);
   $("#installAppBtn")?.addEventListener("click", installApp);
   $("#settingsLogoutBtn")?.addEventListener("click", logout);
+  $("#profileSettingsBackBtn")?.addEventListener("click", () => {
+    $("#profileSettingsDetails")?.removeAttribute("open");
+  });
+  $("#clearGroupHistoryBtn")?.addEventListener("click", clearConversationHistory);
   $("#emojiBtn")?.addEventListener("click", () => {
     $("#iconTray")?.classList.toggle("hidden");
     $("#messageInput")?.focus();
@@ -1489,6 +1692,23 @@ function bindAppEvents() {
       input.focus();
       input.setSelectionRange(start + icon.length, start + icon.length);
     });
+  });
+  document.querySelectorAll("[data-delete-story]").forEach((button) => {
+    button.addEventListener("click", () => deleteStory(button.dataset.deleteStory));
+  });
+  document.querySelectorAll("[data-copy-group-link]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const link = button.dataset.copyGroupLink || "";
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast("Đã sao chép link nhóm.");
+      } catch {
+        showToast(link);
+      }
+    });
+  });
+  document.querySelectorAll("[data-group-search], [data-group-calendar], [data-group-pins], [data-group-poll], [data-group-members], [data-group-notification], [data-group-personal], [data-group-report], [data-group-storage]").forEach((button) => {
+    button.addEventListener("click", () => showToast("Chức năng này đang có giao diện demo."));
   });
   document.querySelectorAll("[data-close-modal]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1583,6 +1803,76 @@ async function createTask(event) {
     await refreshData();
     renderApp();
     showToast("Đã giao việc.");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function createStory(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const mediaFile = form.get("mediaFile");
+  try {
+    const mediaUrl = mediaFile instanceof File && mediaFile.size ? await resizeCoverFile(mediaFile) : "";
+    await api("/api/stories", {
+      method: "POST",
+      body: {
+        type: form.get("type"),
+        text: form.get("text"),
+        mediaUrl
+      }
+    });
+    modal = null;
+    await refreshData({ keepMessages: true });
+    renderApp();
+    showToast("Đã đăng 24 giờ.");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function deleteStory(storyId) {
+  if (!storyId) return;
+  try {
+    await api(`/api/stories/${storyId}`, { method: "DELETE" });
+    await refreshData({ keepMessages: true });
+    renderApp();
+    showToast("Đã xóa story.");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function saveGroupOptions(event) {
+  event.preventDefault();
+  const active = getActiveConversation();
+  if (!active || active.type !== "group") return;
+  const form = new FormData(event.currentTarget);
+  const avatarFile = form.get("groupAvatarFile");
+  const backgroundFile = form.get("groupBackgroundFile");
+  const memberIds = form.getAll("memberIds");
+  try {
+    const avatarUrl = avatarFile instanceof File && avatarFile.size ? await resizeAvatarFile(avatarFile) : form.get("avatarUrl");
+    const backgroundUrl = backgroundFile instanceof File && backgroundFile.size ? await resizeCoverFile(backgroundFile) : form.get("backgroundUrl");
+    await api(`/api/groups/${active.id}`, {
+      method: "PATCH",
+      body: {
+        name: form.get("name"),
+        description: form.get("description"),
+        avatarUrl,
+        backgroundUrl
+      }
+    });
+    if (memberIds.length) {
+      await api(`/api/groups/${active.id}/members`, {
+        method: "POST",
+        body: { memberIds }
+      });
+    }
+    modal = null;
+    await refreshData();
+    renderApp();
+    showToast("Đã lưu tùy chọn nhóm.");
   } catch (err) {
     showToast(err.message);
   }
@@ -1737,6 +2027,21 @@ async function unpinMessage() {
     await refreshData();
     renderApp();
     showToast("Đã bỏ ghim.");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+async function clearConversationHistory() {
+  const active = getActiveConversation();
+  if (!active) return;
+  if (!window.confirm("Xóa lịch sử trò chuyện trong cuộc trò chuyện này?")) return;
+  try {
+    await api(`/api/conversations/${active.id}/messages`, { method: "DELETE" });
+    modal = null;
+    await refreshData();
+    renderApp();
+    showToast("Đã xóa lịch sử trò chuyện.");
   } catch (err) {
     showToast(err.message);
   }

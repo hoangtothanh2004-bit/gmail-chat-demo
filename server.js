@@ -29,6 +29,7 @@ const mimeTypes = {
 
 const sessions = new Map();
 const eventClients = new Map();
+const storyLifetimeMs = 24 * 60 * 60 * 1000;
 
 let db = loadDb();
 
@@ -49,6 +50,7 @@ function normalizeDb(data) {
     conversations: Array.isArray(data.conversations) ? data.conversations : [],
     messages: Array.isArray(data.messages) ? data.messages : [],
     tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    stories: Array.isArray(data.stories) ? data.stories : [],
     passwordResets: Array.isArray(data.passwordResets) ? data.passwordResets : []
   };
 
@@ -73,6 +75,8 @@ function normalizeDb(data) {
     if (conversation.type === "group") {
       conversation.name ||= "Nhóm chat";
       conversation.avatarUrl ||= "";
+      conversation.backgroundUrl ||= "";
+      conversation.description ||= "";
     }
   });
 
@@ -86,6 +90,19 @@ function normalizeDb(data) {
     task.status ||= "open";
     task.createdAt ||= new Date().toISOString();
   });
+
+  next.stories = next.stories
+    .filter((story) => new Date(story.expiresAt) > new Date())
+    .map((story) => ({
+      id: story.id || createId("story"),
+      userId: story.userId || "",
+      type: story.type === "story" ? "story" : "note",
+      text: String(story.text || "").slice(0, 500),
+      mediaUrl: story.mediaUrl || "",
+      createdAt: story.createdAt || new Date().toISOString(),
+      expiresAt: story.expiresAt || new Date(Date.now() + storyLifetimeMs).toISOString()
+    }))
+    .filter((story) => story.userId && story.text);
 
   next.passwordResets = next.passwordResets.filter((reset) => new Date(reset.expiresAt) > new Date());
 
@@ -148,6 +165,7 @@ function createDb() {
     conversations: [],
     messages: [],
     tasks: [],
+    stories: [],
     passwordResets: []
   });
 }
@@ -322,6 +340,9 @@ function publicConversation(conversation, userId) {
       id: conversation.id,
       type: "group",
       name: conversation.name,
+      description: conversation.description || "",
+      backgroundUrl: conversation.backgroundUrl || "",
+      avatarUrl: conversation.avatarUrl || "",
       createdBy: conversation.createdBy || "",
       canManage: conversation.createdBy === userId,
       peer: {
@@ -329,7 +350,8 @@ function publicConversation(conversation, userId) {
         name: conversation.name,
         email: `${members.length} thành viên`,
         avatar: initials(conversation.name),
-        avatarUrl: conversation.avatarUrl || ""
+        avatarUrl: conversation.avatarUrl || "",
+        backgroundUrl: conversation.backgroundUrl || ""
       },
       members,
       lastMessage,
@@ -498,6 +520,34 @@ function getTasksForUser(userId) {
     .filter((task) => visibleConversationIds.has(task.conversationId))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map(publicTask);
+}
+
+function cleanupStories() {
+  const now = new Date();
+  const before = db.stories.length;
+  db.stories = db.stories.filter((story) => new Date(story.expiresAt) > now);
+  return before !== db.stories.length;
+}
+
+function getStoryAudienceFor(userId) {
+  return [userId, ...getFriendsFor(userId).map((friend) => friend.id)];
+}
+
+function publicStory(story) {
+  return {
+    ...story,
+    author: publicUser(db.users.find((user) => user.id === story.userId))
+  };
+}
+
+function getStoriesFor(userId) {
+  const changed = cleanupStories();
+  if (changed) saveDb();
+  const visibleUserIds = new Set(getStoryAudienceFor(userId));
+  return db.stories
+    .filter((story) => visibleUserIds.has(story.userId))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(publicStory);
 }
 
 function publicTask(task) {
@@ -685,7 +735,8 @@ async function handleApi(req, res, url) {
         conversations: getConversationsFor(session.user.id),
         requests: getRequestsFor(session.user.id),
         friends: getFriendsFor(session.user.id),
-        tasks: getTasksForUser(session.user.id)
+        tasks: getTasksForUser(session.user.id),
+        stories: getStoriesFor(session.user.id)
       });
     }
 
@@ -726,6 +777,56 @@ async function handleApi(req, res, url) {
         .flatMap((conversation) => conversation.participantIds);
       pushEvent(relatedUserIds, "refresh", { reason: "profile-updated", actorId: session.user.id });
       return sendJson(res, 200, { user: privateUser(session.user) });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/stories") {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      return sendJson(res, 200, { stories: getStoriesFor(session.user.id) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/stories") {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const body = await readJson(req);
+      const text = String(body.text || "").trim().slice(0, 500);
+      const type = body.type === "story" ? "story" : "note";
+      let mediaUrl = "";
+      try {
+        mediaUrl = validateAvatarUrl(body.mediaUrl || "");
+      } catch (error) {
+        return sendJson(res, 400, { error: error.message });
+      }
+      if (!text && !mediaUrl) return sendJson(res, 400, { error: "Vui lòng nhập nội dung ghi chú hoặc story." });
+
+      cleanupStories();
+      const story = {
+        id: createId("story"),
+        userId: session.user.id,
+        type,
+        text,
+        mediaUrl,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + storyLifetimeMs).toISOString()
+      };
+      db.stories.push(story);
+      saveDb();
+      pushEvent(getStoryAudienceFor(session.user.id), "refresh", { reason: "story-created", actorId: session.user.id });
+      return sendJson(res, 201, { story: publicStory(story) });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/stories/")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const storyId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const story = db.stories.find((candidate) => candidate.id === storyId);
+      if (!story || story.userId !== session.user.id) {
+        return sendJson(res, 404, { error: "Không tìm thấy story của bạn." });
+      }
+      db.stories = db.stories.filter((candidate) => candidate.id !== story.id);
+      saveDb();
+      pushEvent(getStoryAudienceFor(session.user.id), "refresh", { reason: "story-deleted", actorId: session.user.id });
+      return sendJson(res, 200, { ok: true });
     }
 
     if (req.method === "GET" && url.pathname === "/api/friends") {
@@ -858,8 +959,10 @@ async function handleApi(req, res, url) {
       }
 
       let avatarUrl = "";
+      let backgroundUrl = "";
       try {
         avatarUrl = validateAvatarUrl(body.avatarUrl || "");
+        backgroundUrl = validateAvatarUrl(body.backgroundUrl || "");
       } catch (error) {
         return sendJson(res, 400, { error: error.message });
       }
@@ -869,6 +972,8 @@ async function handleApi(req, res, url) {
         type: "group",
         name,
         avatarUrl,
+        backgroundUrl,
+        description: String(body.description || "").trim().slice(0, 240),
         participantIds,
         createdBy: session.user.id,
         pinnedMessageId: "",
@@ -886,6 +991,111 @@ async function handleApi(req, res, url) {
       saveDb();
       pushConversationRefresh(conversation, "group-created", session.user.id);
       return sendJson(res, 201, { conversation: publicConversation(conversation, session.user.id) });
+    }
+
+    if (req.method === "PATCH" && url.pathname.startsWith("/api/groups/")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const groupId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const conversation = db.conversations.find((item) => item.id === groupId && item.type === "group");
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Không tìm thấy nhóm." });
+      }
+
+      const body = await readJson(req);
+      const changes = [];
+      if (typeof body.name === "string") {
+        const name = body.name.trim().slice(0, 80);
+        if (!name) return sendJson(res, 400, { error: "Tên nhóm không được rỗng." });
+        if (name !== conversation.name) {
+          conversation.name = name;
+          changes.push("đổi tên nhóm");
+        }
+      }
+      if (typeof body.description === "string") {
+        const description = body.description.trim().slice(0, 240);
+        if (description !== (conversation.description || "")) {
+          conversation.description = description;
+          changes.push(description ? "cập nhật mô tả nhóm" : "xóa mô tả nhóm");
+        }
+      }
+      try {
+        if (Object.prototype.hasOwnProperty.call(body, "avatarUrl")) {
+          const avatarUrl = validateAvatarUrl(body.avatarUrl);
+          if (avatarUrl !== (conversation.avatarUrl || "")) {
+            conversation.avatarUrl = avatarUrl;
+            changes.push("đổi ảnh nhóm");
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "backgroundUrl")) {
+          const backgroundUrl = validateAvatarUrl(body.backgroundUrl);
+          if (backgroundUrl !== (conversation.backgroundUrl || "")) {
+            conversation.backgroundUrl = backgroundUrl;
+            changes.push("đổi hình nền nhóm");
+          }
+        }
+      } catch (error) {
+        return sendJson(res, 400, { error: error.message });
+      }
+
+      if (changes.length) {
+        db.messages.push({
+          id: createId("msg"),
+          conversationId: conversation.id,
+          senderId: session.user.id,
+          text: `${session.user.name} đã ${changes.join(", ")}.`,
+          type: "system",
+          createdAt: new Date().toISOString()
+        });
+        saveDb();
+        pushConversationRefresh(conversation, "group-updated", session.user.id);
+      }
+      return sendJson(res, 200, { conversation: publicConversation(conversation, session.user.id) });
+    }
+
+    if (req.method === "POST" && url.pathname.startsWith("/api/groups/") && url.pathname.endsWith("/members")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const groupId = decodeURIComponent(url.pathname.split("/")[3] || "");
+      const conversation = db.conversations.find((item) => item.id === groupId && item.type === "group");
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Không tìm thấy nhóm." });
+      }
+
+      const body = await readJson(req);
+      const memberIds = [...new Set(Array.isArray(body.memberIds) ? body.memberIds.map(String) : [])].filter(
+        (id) => id !== session.user.id && !conversation.participantIds.includes(id)
+      );
+      if (!memberIds.length) return sendJson(res, 400, { error: "Chọn ít nhất một bạn bè chưa có trong nhóm." });
+      if (memberIds.some((id) => !db.users.some((user) => user.id === id))) {
+        return sendJson(res, 400, { error: "Thành viên không hợp lệ." });
+      }
+
+      const participantIds = [...conversation.participantIds, ...memberIds];
+      for (const newMemberId of memberIds) {
+        for (const participantId of participantIds) {
+          if (newMemberId !== participantId && !areFriends(newMemberId, participantId)) {
+            return sendJson(res, 400, { error: "Người mới cần kết bạn với các thành viên hiện có trước khi vào nhóm." });
+          }
+        }
+      }
+
+      conversation.participantIds = participantIds;
+      const names = memberIds
+        .map((id) => db.users.find((user) => user.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      db.messages.push({
+        id: createId("msg"),
+        conversationId: conversation.id,
+        senderId: session.user.id,
+        text: `${session.user.name} đã thêm ${names} vào nhóm.`,
+        type: "system",
+        createdAt: new Date().toISOString()
+      });
+      saveDb();
+      pushConversationRefresh(conversation, "group-updated", session.user.id);
+      return sendJson(res, 200, { conversation: publicConversation(conversation, session.user.id) });
     }
 
     if (req.method === "POST" && url.pathname.startsWith("/api/groups/") && url.pathname.endsWith("/leave")) {
@@ -940,6 +1150,22 @@ async function handleApi(req, res, url) {
       db.tasks = db.tasks.filter((task) => task.conversationId !== conversation.id);
       saveDb();
       pushEvent(oldParticipants, "refresh", { reason: "group-deleted", conversationId: conversation.id, actorId: session.user.id });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/conversations/") && url.pathname.endsWith("/messages")) {
+      const session = requireAuth(req, res);
+      if (!session) return;
+      const conversationId = url.pathname.split("/")[3];
+      const conversation = db.conversations.find((item) => item.id === conversationId);
+      if (!conversation || !conversation.participantIds.includes(session.user.id)) {
+        return sendJson(res, 404, { error: "Không tìm thấy cuộc trò chuyện." });
+      }
+
+      db.messages = db.messages.filter((message) => message.conversationId !== conversation.id);
+      conversation.pinnedMessageId = "";
+      saveDb();
+      pushConversationRefresh(conversation, "history-cleared", session.user.id);
       return sendJson(res, 200, { ok: true });
     }
 
