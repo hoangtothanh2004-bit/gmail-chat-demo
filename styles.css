@@ -443,6 +443,24 @@ button {
   box-shadow: 11px 0 0 -1px currentColor, 0 11px 0 -1px currentColor, 11px 11px 0 -1px currentColor;
 }
 
+.nav-icon-feed::before {
+  inset: 4px 3px 5px;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+}
+
+.nav-icon-feed::after {
+  left: 8px;
+  bottom: 8px;
+  width: 9px;
+  height: 6px;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle at 80% 22%, currentColor 0 2px, transparent 2px),
+    linear-gradient(135deg, transparent 44%, currentColor 45% 56%, transparent 57%),
+    linear-gradient(45deg, transparent 38%, currentColor 39% 54%, transparent 55%);
+}
+
 .nav-icon-tasks::before {
   inset: 3px 4px;
   border: 2px solid currentColor;
@@ -562,6 +580,42 @@ button {
   background: #fbfdff;
 }
 
+.feed-panel {
+  min-height: 100%;
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 38%);
+}
+
+.feed-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 50px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+}
+
+.feed-tabs button {
+  position: relative;
+  color: var(--muted);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.feed-tabs button.active {
+  color: var(--ink);
+}
+
+.feed-tabs button.active::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 0;
+  height: 3px;
+  border-radius: 99px 99px 0 0;
+  background: var(--blue);
+}
+
 .story-add,
 .story-chip {
   min-height: 82px;
@@ -650,6 +704,137 @@ button {
   color: white;
   background: rgba(15, 23, 42, 0.45);
   font-size: 13px;
+}
+
+.feed-compose {
+  padding: 14px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  align-items: center;
+  background: white;
+}
+
+.feed-compose .avatar {
+  width: 44px;
+  height: 44px;
+}
+
+.feed-compose > button {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #f1f5f9;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.feed-compose-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.feed-compose-actions button {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: #f4f7fb;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.feed-list {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0 18px;
+}
+
+.feed-empty,
+.feed-post {
+  margin: 0 12px;
+  padding: 14px;
+  border: 1px solid #edf2f7;
+  border-radius: 14px;
+  background: white;
+}
+
+.feed-empty {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.feed-empty strong {
+  display: block;
+  color: var(--ink);
+}
+
+.feed-empty p {
+  margin: 5px 0 0;
+}
+
+.feed-post header {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.feed-post .avatar {
+  width: 42px;
+  height: 42px;
+}
+
+.feed-post strong,
+.feed-post span {
+  display: block;
+}
+
+.feed-post span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.feed-post p {
+  margin: 12px 0;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.feed-media {
+  min-height: 180px;
+  border-radius: 12px;
+  background-size: cover;
+  background-position: center;
+}
+
+.feed-post footer {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.feed-post footer button {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #f1f5f9;
+  font-weight: 900;
+}
+
+.feed-delete {
+  position: static;
+  color: var(--muted);
+  background: #f1f5f9;
 }
 
 .panel-section {
@@ -1898,11 +2083,36 @@ button {
 .profile-close-btn {
   width: 42px;
   height: 42px;
-  border-radius: 50%;
-  color: white;
-  background: rgba(15, 23, 42, 0.48);
-  font-size: 30px;
+  border-radius: 14px;
+  position: relative;
+  color: var(--ink);
+  background: #eef4fa;
+  font-size: 0;
   line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(216, 225, 239, 0.78);
+}
+
+.profile-close-btn::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  border-left: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.profile-close-btn::after {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 20px;
+  width: 17px;
+  height: 2.5px;
+  border-radius: 99px;
+  background: currentColor;
 }
 
 .profile-settings-menu {
@@ -1962,10 +2172,34 @@ button {
   width: 34px;
   height: 34px;
   border-radius: 50%;
+  position: relative;
   color: var(--blue);
   background: #edf4ff;
-  font-size: 20px;
+  font-size: 0;
   font-weight: 900;
+}
+
+.settings-menu-header button::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 11px;
+  width: 10px;
+  height: 10px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.settings-menu-header button::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 16px;
+  width: 14px;
+  height: 2px;
+  border-radius: 99px;
+  background: currentColor;
 }
 
 .settings-menu-header strong {
@@ -2649,6 +2883,7 @@ body[data-theme="dark"] .install-box,
 body[data-theme="dark"] .icon-tray,
 body[data-theme="dark"] .icon-choice,
 body[data-theme="dark"] .stories-strip,
+body[data-theme="dark"] .feed-panel,
 body[data-theme="dark"] .conversation-list {
   background: var(--soft);
 }
@@ -2683,8 +2918,24 @@ body[data-theme="dark"] .tool-btn,
 body[data-theme="dark"] .pinned-bar,
 body[data-theme="dark"] .story-add,
 body[data-theme="dark"] .story-chip.story-note,
+body[data-theme="dark"] .feed-compose > button,
+body[data-theme="dark"] .feed-compose-actions button,
+body[data-theme="dark"] .feed-post footer button,
 body[data-theme="dark"] .profile-facts span {
   background: #142746;
+}
+
+body[data-theme="dark"] .feed-tabs,
+body[data-theme="dark"] .feed-compose,
+body[data-theme="dark"] .feed-empty,
+body[data-theme="dark"] .feed-post {
+  background: var(--panel);
+}
+
+body[data-theme="dark"] .profile-close-btn {
+  color: var(--ink);
+  background: #142746;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
 }
 
 body[data-theme="dark"] .section-tabs button {

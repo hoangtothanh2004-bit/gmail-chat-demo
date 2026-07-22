@@ -1,9 +1,9 @@
-const CACHE_NAME = "gmail-chat-demo-v20260722-stories-group-options";
+const CACHE_NAME = "gmail-chat-demo-v20260722-feed-story-tab";
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=20260722-stories-group-options",
-  "/app.js?v=20260722-stories-group-options",
+  "/styles.css?v=20260722-feed-story-tab",
+  "/app.js?v=20260722-feed-story-tab",
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/icon-192.png",

@@ -16,6 +16,7 @@ let resetEmail = "";
 let activeTab = "messages";
 let searchText = "";
 let searchResults = [];
+let storyDraftType = "note";
 let events = null;
 let callState = null;
 let incomingCall = null;
@@ -550,7 +551,7 @@ function renderApp() {
         </button>
         ${renderRailButton("messages", "Tin nhắn", "chat")}
         ${renderRailButton("friends", "Danh bạ", "contacts", requests.length)}
-        ${renderRailButton("groups", "Nhóm", "groups")}
+        ${renderRailButton("feed", "Bản tin", "feed", stories.length)}
         ${renderRailButton("tasks", "Công việc", "tasks", tasks.filter((task) => task.status !== "done").length)}
         <div class="rail-spacer"></div>
         <button class="icon-btn ${modal === "settings" ? "active" : ""}" id="settingsBtn" title="Cá nhân" type="button">
@@ -622,6 +623,7 @@ function friendStatusLabel(status) {
 function renderSidebarList() {
   if (activeTab === "search") return renderSearchResults();
   if (activeTab === "friends") return renderContactsPanel();
+  if (activeTab === "feed") return renderFeedPanel();
   if (activeTab === "groups") return renderGroupsList();
   if (activeTab === "tasks") return renderTasksPanel();
   return renderConversationList();
@@ -719,13 +721,13 @@ function renderGroupsList() {
   return groups.map((item) => renderConversationButton(item)).join("");
 }
 
-function renderStoriesStrip() {
+function renderStoryRail() {
   const visibleStories = (stories || []).slice(0, 10);
   return `
     <section class="stories-strip" aria-label="Ghi chú và story 24 giờ">
       <button class="story-add" id="newStoryBtn" type="button">
         <span>+</span>
-        <strong>Đăng 24 giờ</strong>
+        <strong>Tạo mới</strong>
       </button>
       ${visibleStories
         .map(
@@ -746,6 +748,58 @@ function renderStoriesStrip() {
   `;
 }
 
+function renderFeedPanel() {
+  const visibleStories = stories || [];
+  return `
+    <section class="feed-panel">
+      <div class="feed-tabs">
+        <button class="active" type="button">Bản tin</button>
+        <button type="button">Tin 24 giờ</button>
+      </div>
+      ${renderStoryRail()}
+      <div class="feed-compose">
+        ${renderAvatar(currentUser)}
+        <button type="button" id="newStoryComposerBtn">Hôm nay bạn thế nào?</button>
+        <div class="feed-compose-actions">
+          <button type="button" id="newStoryPhotoBtn">Ảnh</button>
+          <button type="button" id="newStoryVideoBtn">Story</button>
+        </div>
+      </div>
+      <div class="feed-list">
+        ${visibleStories.length
+          ? visibleStories.map((story) => renderFeedPost(story)).join("")
+          : `
+            <div class="feed-empty">
+              <strong>Chưa có bản tin 24 giờ.</strong>
+              <p>Bấm Tạo mới để đăng ghi chú hoặc story. Tin sẽ tự mất sau 24 giờ.</p>
+            </div>
+          `}
+      </div>
+    </section>
+  `;
+}
+
+function renderFeedPost(story) {
+  return `
+    <article class="feed-post">
+      <header>
+        ${renderAvatar(story.author || { avatar: "?" })}
+        <div>
+          <strong>${escapeHtml(story.author?.name || "Bạn bè")}</strong>
+          <span>${escapeHtml(story.type === "story" ? "Story 24 giờ" : "Ghi chú 24 giờ")} · ${escapeHtml(formatTime(story.createdAt))}</span>
+        </div>
+        ${story.userId === currentUser.id ? `<button class="story-delete feed-delete" title="Xóa" type="button" data-delete-story="${escapeAttr(story.id)}">×</button>` : ""}
+      </header>
+      <p>${escapeHtml(story.text || "Đã đăng một story mới.")}</p>
+      ${story.mediaUrl ? `<div class="feed-media" style="background-image: url('${escapeAttr(story.mediaUrl)}')"></div>` : ""}
+      <footer>
+        <button type="button">♡ Thích</button>
+        <button type="button">💬 Bình luận</button>
+      </footer>
+    </article>
+  `;
+}
+
 function renderConversationList() {
   const query = searchText.trim().toLowerCase();
   const list = conversations.filter((item) => {
@@ -755,7 +809,7 @@ function renderConversationList() {
   const listHtml = list.length
     ? list.map((item) => renderConversationButton(item)).join("")
     : `<div class="empty-state">Chưa có cuộc trò chuyện nào.</div>`;
-  return `${renderStoriesStrip()}${listHtml}`;
+  return listHtml;
 }
 
 function renderConversationButton(item) {
@@ -1070,11 +1124,11 @@ function renderStoryModal() {
         </header>
         <div class="story-type-picker">
           <label>
-            <input type="radio" name="type" value="note" checked>
+            <input type="radio" name="type" value="note" ${storyDraftType === "story" ? "" : "checked"}>
             <span>Ghi chú 24 giờ</span>
           </label>
           <label>
-            <input type="radio" name="type" value="story">
+            <input type="radio" name="type" value="story" ${storyDraftType === "story" ? "checked" : ""}>
             <span>Story 24 giờ</span>
           </label>
         </div>
@@ -1629,6 +1683,22 @@ function bindAppEvents() {
     renderApp();
   });
   $("#newStoryBtn")?.addEventListener("click", () => {
+    storyDraftType = "story";
+    modal = "story";
+    renderApp();
+  });
+  $("#newStoryComposerBtn")?.addEventListener("click", () => {
+    storyDraftType = "note";
+    modal = "story";
+    renderApp();
+  });
+  $("#newStoryPhotoBtn")?.addEventListener("click", () => {
+    storyDraftType = "story";
+    modal = "story";
+    renderApp();
+  });
+  $("#newStoryVideoBtn")?.addEventListener("click", () => {
+    storyDraftType = "story";
     modal = "story";
     renderApp();
   });
@@ -1823,6 +1893,7 @@ async function createStory(event) {
       }
     });
     modal = null;
+    storyDraftType = "note";
     await refreshData({ keepMessages: true });
     renderApp();
     showToast("Đã đăng 24 giờ.");
